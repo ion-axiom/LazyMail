@@ -48,7 +48,8 @@ from app.config import (
     INBOX_DAYS_LIMIT,
     APP_VERSION,
     APP_AUTHOR,
-    APP_AUTHOR_ALIAS
+    APP_AUTHOR_ALIAS,
+    APP_AUTHOR_URL
 )
 
 @asynccontextmanager
@@ -58,8 +59,12 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="LazyMail Client",
-    description=f"LazyMail Client v{APP_VERSION} by {APP_AUTHOR}",
+    description=f"LazyMail Client v{APP_VERSION} by {APP_AUTHOR} ({APP_AUTHOR_URL})",
     version=APP_VERSION,
+    contact={
+        "name": APP_AUTHOR,
+        "url": APP_AUTHOR_URL,
+    },
     lifespan=lifespan
 )
 
@@ -125,6 +130,7 @@ async def auth_status(request: Request):
         "app_version": APP_VERSION,
         "app_author": APP_AUTHOR,
         "app_author_alias": APP_AUTHOR_ALIAS,
+        "app_author_url": APP_AUTHOR_URL,
         "setup_required": user_count == 0,
         "logged_in": current_user is not None,
         "username": current_user["username"] if current_user else None,

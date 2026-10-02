@@ -159,6 +159,7 @@ def test_fastapi_endpoints():
     assert "setup_required" in data
     assert data["app_version"] == "1.0.0"
     assert "Derek Richards" in data["app_author"]
+    assert data["app_author_url"] == "https://derekr.co.uk"
 
 def test_full_api_user_flow():
     client = TestClient(app)

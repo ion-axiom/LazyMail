@@ -6,6 +6,7 @@ APP_NAME = "LazyMail"
 APP_VERSION = "1.0.0"
 APP_AUTHOR = "Derek Richards (DerekR)"
 APP_AUTHOR_ALIAS = "DerekR"
+APP_AUTHOR_URL = "https://derekr.co.uk"
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data"

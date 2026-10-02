@@ -1,8 +1,9 @@
 # LazyMail — Secure & Robust Email Client
 
 **Version**: `1.0.0`  
-**Author**: Derek Richards (alias: DerekR)  
-**License**: Proprietary / Open Source (MIT)
+**Author**: [Derek Richards (alias: DerekR)](https://derekr.co.uk)  
+**Website**: [https://derekr.co.uk](https://derekr.co.uk)  
+**Copyright**: [COPYRIGHT.md](file:///Users/lifehance/Development/LazyMail/COPYRIGHT.md) (c) 2026 Derek Richards
 
 LazyMail is a secure, elegant, and robust web email client specifically designed for Gmail. It allows you to synchronize the last 7 days of incoming emails (capped at 50 messages), compose and send emails via SMTP, maintain an encrypted local store of sent emails (capped at 50 messages), and purge messages on demand from an encrypted SQLite database.
 
