@@ -32,8 +32,14 @@ detect_server_ip() {
 SERVER_IP="${SERVER_IP:-$(detect_server_ip)}"
 NGINX_AVAILABLE="/etc/nginx/sites-available"
 NGINX_ENABLED="/etc/nginx/sites-enabled"
-CONF_FILE="${NGINX_AVAILABLE}/${DOMAIN}.conf"
-CONF_LINK="${NGINX_ENABLED}/${DOMAIN}.conf"
+# Use /etc/nginx/conf.d if sites-enabled is not active or if Plesk is managing Nginx
+if [ -d "/etc/nginx/conf.d" ]; then
+    CONF_FILE="/etc/nginx/conf.d/${DOMAIN}.conf"
+    CONF_LINK=""
+else
+    CONF_FILE="${NGINX_AVAILABLE}/${DOMAIN}.conf"
+    CONF_LINK="${NGINX_ENABLED}/${DOMAIN}.conf"
+fi
 BACKUP_DIR="/var/backups/lazyadmin"
 
 # Color formatting
@@ -161,6 +167,17 @@ check_port_safety() {
 install_dependencies() {
     log_step "Checking System Dependencies"
     
+    # On Plesk managed systems, sw-nginx and web services are managed by Plesk.
+    # Never install vanilla debian nginx or certbot-nginx on Plesk!
+    if command -v plesk >/dev/null 2>&1; then
+        log_info "Plesk control panel detected. Preserving Plesk's sw-nginx environment."
+        if ! command -v curl >/dev/null 2>&1; then
+            apt-get update -y && apt-get install -y curl
+        fi
+        log_success "Plesk web environment verified."
+        return 0
+    fi
+
     local need_update=0
     local packages=(nginx certbot python3-certbot-nginx curl)
 
@@ -251,11 +268,13 @@ EOF
     # Move temporary file into sites-available
     mv -f "${temp_conf}" "${CONF_FILE}"
 
-    # Create symlink in sites-enabled
-    if [ -L "${CONF_LINK}" ]; then
-        rm -f "${CONF_LINK}"
+    # Create symlink in sites-enabled if applicable
+    if [ -n "${CONF_LINK}" ]; then
+        if [ -L "${CONF_LINK}" ]; then
+            rm -f "${CONF_LINK}"
+        fi
+        ln -s "${CONF_FILE}" "${CONF_LINK}"
     fi
-    ln -s "${CONF_FILE}" "${CONF_LINK}"
 
     # Atomic syntax validation
     log_info "Validating new Nginx configuration..."
