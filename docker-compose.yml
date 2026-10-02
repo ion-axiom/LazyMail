@@ -1,0 +1,22 @@
+services:
+  lazymail:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: lazymail-app
+    restart: unless-stopped
+    ports:
+      # Maps localhost port 3011 (internal only, protected from public internet) to container port 8000
+      - "${HOST_BIND:-127.0.0.1}:${HOST_PORT:-3011}:8000"
+    volumes:
+      # Persistent storage for SQLite database (lazymail.db) and Fernet encryption key (.secret.key)
+      - ./data:/app/data
+    environment:
+      - PORT=8000
+      # Optional: set an explicit secret key if preferred over auto-generated key in data/
+      - LAZYMAIL_SECRET_KEY=${LAZYMAIL_SECRET_KEY:-}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

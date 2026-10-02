@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="tr" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>LazyMail — Güvenli &amp; Şık E-posta İstemcisi</title>
+  <meta name="description" content="Gmail için IMAP/SMTP senkronizasyonlu, SQLite şifreli depolamalı ve anında veritabanı temizleme özellikli güvenli e-posta istemcisi.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+  <!-- Toast Notification Hub -->
+  <div id="toast-container" class="toast-container" aria-live="polite"></div>
+
+  <!-- AUTH / SETUP OVERLAY MODAL -->
+  <div id="auth-modal" class="modal-overlay active">
+    <div class="auth-card">
+      <div class="auth-header">
+        <div class="auth-lang-row" style="display: flex; justify-content: flex-end; margin-bottom: 0.75rem;">
+          <div class="lang-switcher-pill">
+            <button type="button" class="lang-btn active" data-lang="tr">🇹🇷 TR</button>
+            <button type="button" class="lang-btn" data-lang="en">🇬🇧 EN</button>
+          </div>
+        </div>
+        <div class="brand-icon">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect width="20" height="16" x="2" y="4" rx="3"></rect>
+            <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"></path>
+          </svg>
+        </div>
+        <h1 id="auth-title" data-i18n="setup_title">LazyMail Kurulumu</h1>
+        <p id="auth-subtitle" data-i18n="setup_subtitle">Gmail kullanıcı adı ön ekinizi ve 16 haneli Uygulama Şifrenizi girin</p>
+      </div>
+
+      <!-- Setup Form (First Run) -->
+      <form id="setup-form" class="auth-form hidden">
+        <div class="alert-info">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+          <span data-i18n-html="setup_alert">Enter your Gmail username prefix (e.g. <strong>harrypotter12345</strong>) and 16-char Google App Passcode. These will create your login and auto-populate your Gmail account details!</span>
+        </div>
+        <div class="form-group">
+          <label for="setup-username" data-i18n="label_username_prefix">Gmail Kullanıcı Adı (Ön Ek)</label>
+          <input type="text" id="setup-username" placeholder="örn. harrypotter12345" data-i18n-placeholder="placeholder_username_prefix" required minlength="2" autocomplete="username">
+          <small class="helper-text"><span data-i18n="setup_email_preview_label">Posta kutusu yapılandırması: </span><strong id="setup-email-preview" style="color: var(--primary);">yourname@gmail.com</strong></small>
+        </div>
+        <div class="form-group">
+          <label for="setup-password" data-i18n="label_app_passcode">16 Haneli Google Uygulama Şifresi</label>
+          <div class="password-input-wrapper">
+            <input type="password" id="setup-password" placeholder="örn. abcd efgh ijkl mnop" data-i18n-placeholder="placeholder_app_passcode" required minlength="6" autocomplete="new-password">
+            <button type="button" id="btn-toggle-setup-password" class="btn-icon-inside" title="Göster/Gizle" data-i18n-title="toggle_password_tooltip">👁️</button>
+          </div>
+          <small class="helper-text" data-i18n="helper_app_passcode">Google Hesabı &gt; Güvenlik &gt; 2 Adımlı Doğrulama &gt; Uygulama şifreleri</small>
+        </div>
+        <div class="form-group">
+          <label for="setup-password-confirm" data-i18n="label_confirm_passcode">Uygulama Şifresini Onaylayın</label>
+          <input type="password" id="setup-password-confirm" placeholder="Şifreyi tekrar girin" data-i18n-placeholder="placeholder_confirm_passcode" required minlength="6" autocomplete="new-password">
+        </div>
+        <button type="submit" id="btn-setup-submit" class="btn btn-primary btn-block">
+          <span class="btn-text" data-i18n="btn_create_account">Hesap Oluştur ve Gmail'e Bağlan</span>
+          <span class="btn-spinner hidden"></span>
+        </button>
+      </form>
+
+      <!-- Login Form -->
+      <form id="login-form" class="auth-form">
+        <div class="form-group">
+          <label for="login-username" data-i18n="label_login_username">Gmail Kullanıcı Adı</label>
+          <input type="text" id="login-username" placeholder="örn. harrypotter12345 veya tam e-posta" data-i18n-placeholder="placeholder_login_username" required autocomplete="username">
+        </div>
+        <div class="form-group">
+          <div class="label-row">
+            <label for="login-password" data-i18n="label_login_passcode">Uygulama Şifresi</label>
+          </div>
+          <div class="password-input-wrapper">
+            <input type="password" id="login-password" placeholder="16 haneli şifre" data-i18n-placeholder="placeholder_login_passcode" required autocomplete="current-password">
+            <button type="button" id="btn-toggle-login-password" class="btn-icon-inside" title="Göster/Gizle" data-i18n-title="toggle_password_tooltip">👁️</button>
+          </div>
+        </div>
+        <button type="submit" id="btn-login-submit" class="btn btn-primary btn-block">
+          <span class="btn-text" data-i18n="btn_unlock_mailbox">Posta Kutusunu Aç</span>
+          <span class="btn-spinner hidden"></span>
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- MAIN APP CONTAINER -->
+  <div id="app-layout" class="app-container">
+    
+    <!-- TOP NAVBAR -->
+    <header class="top-nav">
+      <div class="nav-left">
+        <button id="btn-mobile-sidebar-toggle" class="btn-icon mobile-only" aria-label="Menü" data-i18n-title="mobile_menu_label" title="Menü">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="3" y1="12" x2="21" y2="12"></line>
+            <line x1="3" y1="6" x2="21" y2="6"></line>
+            <line x1="3" y1="18" x2="21" y2="18"></line>
+          </svg>
+        </button>
+        <div class="brand">
+          <div class="brand-badge">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect width="20" height="16" x="2" y="4" rx="3"></rect>
+              <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"></path>
+            </svg>
+          </div>
+          <span class="brand-name">LazyMail</span>
+        </div>
+        
+        <div id="connection-pill" class="status-pill status-disconnected" title="Gmail bağlantı durumu" data-i18n-title="connection_status_title">
+          <span class="status-dot"></span>
+          <span id="connection-status-text" data-i18n="status_not_configured">Yapılandırılmadı</span>
+        </div>
+      </div>
+
+      <div class="nav-center">
+        <div class="search-box">
+          <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          <input type="text" id="global-search-input" placeholder="Gönderen, konu veya içeriğe göre e-postaları ara..." data-i18n-placeholder="search_placeholder" aria-label="Search emails">
+          <button id="btn-search-clear" class="btn-icon-sm hidden" title="Aramayı temizle" data-i18n-title="search_clear_tooltip">✕</button>
+        </div>
+      </div>
+
+      <div class="nav-right">
+        <!-- Language Switcher Pill -->
+        <div class="lang-switcher-pill" id="nav-lang-switcher">
+          <button type="button" class="lang-btn active" data-lang="tr">🇹🇷 TR</button>
+          <button type="button" class="lang-btn" data-lang="en">🇬🇧 EN</button>
+        </div>
+
+        <button id="btn-theme-toggle" class="btn-icon" title="Karanlık/Aydınlık Modu Değiştir" data-i18n-title="theme_tooltip" aria-label="Toggle theme">
+          <svg class="icon-moon" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+          <svg class="icon-sun hidden" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+        </button>
+
+        <div class="user-menu">
+          <div class="user-avatar" id="user-avatar-initials">U</div>
+          <span class="user-name" id="current-username-display">Kullanıcı</span>
+          <button id="btn-logout" class="btn-icon" title="Çıkış Yap" data-i18n-title="logout_tooltip" aria-label="Logout">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- WORKSPACE BODY (SIDEBAR + SPLIT EMAIL PANES) -->
+    <div class="workspace">
+      <!-- Mobile Sidebar Backdrop Overlay -->
+      <div id="sidebar-backdrop" class="sidebar-backdrop"></div>
+      
+      <!-- SIDEBAR -->
+      <aside class="sidebar" id="app-sidebar">
+        <div class="sidebar-mobile-header mobile-only">
+          <span class="brand-name">LazyMail</span>
+          <button id="btn-sidebar-close" class="btn-icon-sm" aria-label="Kapat" data-i18n-title="close_tooltip" title="Kapat">✕</button>
+        </div>
+        <button id="btn-compose-open" class="btn btn-compose">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+          <span data-i18n="btn_compose">Yeni E-posta</span>
+        </button>
+
+        <nav class="sidebar-nav">
+          <button id="nav-tab-inbox" class="nav-item active" data-tab="inbox">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
+            <span class="nav-text" data-i18n="nav_inbox">Gelen Kutusu (7 Gün)</span>
+            <span id="badge-inbox-count" class="badge">0</span>
+          </button>
+
+          <button id="nav-tab-sent" class="nav-item" data-tab="sent">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" x2="11" y1="2" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            <span class="nav-text" data-i18n="nav_sent">Gönderilen Mesajlar</span>
+            <span id="badge-sent-count" class="badge">0/50</span>
+          </button>
+
+          <div class="sidebar-divider"></div>
+
+          <button id="nav-tab-purge" class="nav-item nav-danger" data-tab="purge">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
+            <span class="nav-text" data-i18n="nav_purge">Veritabanını Temizle</span>
+          </button>
+
+          <button id="nav-tab-settings" class="nav-item" data-tab="settings">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            <span class="nav-text" data-i18n="nav_settings">E-posta Ayarları</span>
+          </button>
+        </nav>
+
+        <div class="sidebar-footer">
+          <div class="storage-info-card">
+            <div class="storage-header">
+              <span data-i18n="storage_title">SQLite Depolama</span>
+              <span id="storage-percentage">0%</span>
+            </div>
+            <div class="progress-bar">
+              <div id="storage-progress-fill" class="progress-fill" style="width: 0%;"></div>
+            </div>
+            <div class="storage-labels">
+              <span id="storage-sent-stat">0/50 Gönderilen</span>
+              <span id="storage-inbox-stat">0/50 Gelen Kutusu</span>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- DYNAMIC CONTENT SECTIONS -->
+      <main class="main-content">
+        
+        <!-- INBOX & SENT MESSAGES VIEW (SPLIT MASTER-DETAIL) -->
+        <div id="view-mail" class="mail-view">
+          
+          <!-- Master List Column -->
+          <section class="email-list-column">
+            <div class="list-toolbar">
+              <div class="toolbar-title-group">
+                <h2 id="current-folder-title" data-i18n="folder_inbox">Gelen Kutusu</h2>
+                <span id="folder-meta-sub" class="folder-meta" data-i18n="folder_inbox_meta">Son 7 gün (maks. 50 e-posta)</span>
+              </div>
+              <div class="toolbar-actions">
+                <button id="btn-sync-inbox" class="btn btn-secondary btn-sm" title="Gmail IMAP'ten e-postaları senkronize et" data-i18n-title="sync_tooltip">
+                  <svg id="sync-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                  <span data-i18n="btn_sync_imap">IMAP Senkronize Et</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Email Cards List Container -->
+            <div id="email-items-container" class="email-items-container">
+              <!-- Dynamically populated or empty state -->
+            </div>
+          </section>
+
+          <!-- Detail Preview Column -->
+          <section class="email-detail-column" id="email-detail-column">
+            <!-- Empty state when no message selected -->
+            <div id="detail-empty-placeholder" class="detail-empty">
+              <div class="empty-icon">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                  <polyline points="22,6 12,13 2,6"/>
+                </svg>
+              </div>
+              <h3 data-i18n="select_email_title">Okumak için bir e-posta seçin</h3>
+              <p data-i18n="select_email_desc">Detayları, başlıkları ve tam içeriği görüntülemek için listeden bir mesaj seçin.</p>
+            </div>
+
+            <!-- Active email detail content -->
+            <div id="detail-content" class="detail-content hidden">
+              <div class="detail-header">
+                <div class="detail-actions-top">
+                  <button id="btn-detail-back" class="btn btn-secondary btn-sm mobile-only" title="Geri" data-i18n-title="btn_back">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg>
+                    <span data-i18n="btn_back">Geri</span>
+                  </button>
+                  <button id="btn-reply" class="btn btn-secondary btn-sm">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
+                    <span data-i18n="btn_reply">Yanıtla</span>
+                  </button>
+                  <button id="btn-close-detail" class="btn-icon-sm" title="Kapat" data-i18n-title="close_tooltip">✕</button>
+                </div>
+                
+                <h2 id="detail-subject" class="detail-subject">(Konusuz)</h2>
+
+                <div class="detail-meta">
+                  <div class="detail-avatar" id="detail-avatar">U</div>
+                  <div class="detail-meta-text">
+                    <div class="detail-from-row">
+                      <span id="detail-sender" class="detail-sender">Gönderici</span>
+                      <span id="detail-sender-email" class="detail-sender-email">&lt;email@example.com&gt;</span>
+                    </div>
+                    <div class="detail-to-row">
+                      <span data-i18n="detail_to_prefix">Kime: </span>
+                      <span id="detail-recipient" class="detail-recipient">Bana</span>
+                    </div>
+                  </div>
+                  <div class="detail-date" id="detail-date">02 Eki 2026</div>
+                </div>
+              </div>
+
+              <!-- Message Body Preview -->
+              <div class="detail-body-container">
+                <div class="body-view-toggle">
+                  <button id="btn-view-rendered" class="view-pill active" data-i18n="view_rendered">Arındırılmış Görünüm</button>
+                  <button id="btn-view-plain" class="view-pill" data-i18n="view_plain">Düz Metin</button>
+                </div>
+
+                <div id="detail-body-html-wrapper" class="body-content">
+                  <iframe id="detail-body-iframe" sandbox="allow-popups allow-popups-to-escape-sandbox allow-same-origin" title="Email content preview"></iframe>
+                </div>
+
+                <div id="detail-body-plain" class="body-content-plain hidden"></div>
+              </div>
+            </div>
+          </section>
+
+        </div>
+
+        <!-- SETTINGS VIEW -->
+        <div id="view-settings" class="view-card-container hidden">
+          <div class="settings-card">
+            <div class="card-header">
+              <h2 data-i18n="settings_title">Gmail IMAP / SMTP Yapılandırması</h2>
+              <p data-i18n="settings_desc">Gmail bilgilerinizi güvenle yapılandırın. Uygulama Şifreleri SQLite içinde AES-256 (Fernet) ile şifrelenir.</p>
+            </div>
+
+            <!-- Gmail Instructions Tip Box -->
+            <div class="info-banner">
+              <div class="info-icon">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>
+              </div>
+              <div class="info-content">
+                <strong data-i18n="banner_title">Gmail Uygulama Şifresi Kurulumu:</strong>
+                <ol>
+                  <li data-i18n-html="banner_step1">Google Hesabı güvenlik ayarlarınızda <strong>2 Adımlı Doğrulama</strong>yı açın.</li>
+                  <li data-i18n-html="banner_step2">Google Hesabı arama çubuğuna <strong>"Uygulama şifreleri"</strong> yazın.</li>
+                  <li data-i18n-html="banner_step3"><em>"LazyMail"</em> adında yeni bir Uygulama Şifresi oluşturun ve 16 haneli kodu kopyalayın.</li>
+                  <li data-i18n-html="banner_step4">16 haneli kodu aşağıdaki <strong>Gmail Uygulama Şifresi</strong> alanına yapıştırın.</li>
+                </ol>
+              </div>
+            </div>
+
+            <form id="settings-form" class="settings-grid">
+              <div class="form-group full-width">
+                <label for="cfg-email" data-i18n="label_gmail_address">Gmail Adresi *</label>
+                <input type="email" id="cfg-email" placeholder="adiniz@gmail.com" required>
+              </div>
+
+              <div class="form-group full-width">
+                <label for="cfg-password" data-i18n="label_app_password">Gmail Uygulama Şifresi *</label>
+                <div class="password-input-wrapper">
+                  <input type="password" id="cfg-password" placeholder="16 haneli uygulama şifresi (değiştirmeyecekseniz boş bırakın)" data-i18n-placeholder="placeholder_app_password">
+                  <button type="button" id="btn-toggle-password-view" class="btn-icon-inside" title="Göster/Gizle" data-i18n-title="toggle_password_tooltip">
+                    👁️
+                  </button>
+                </div>
+                <small id="password-status-hint" class="helper-text" data-i18n="hint_app_password_default">16 haneli Google Uygulama Şifrenizi girin.</small>
+              </div>
+
+              <div class="form-group full-width">
+                <label for="cfg-sender-name" data-i18n="label_sender_name">Görünen Gönderici Adı (İsteğe bağlı)</label>
+                <input type="text" id="cfg-sender-name" placeholder="örn. Ahmet Yılmaz" data-i18n-placeholder="placeholder_sender_name">
+              </div>
+
+              <div class="form-group">
+                <label for="cfg-imap-host" data-i18n="label_imap_host">IMAP Sunucu Adresi</label>
+                <input type="text" id="cfg-imap-host" value="imap.gmail.com" required>
+              </div>
+
+              <div class="form-group">
+                <label for="cfg-imap-port" data-i18n="label_imap_port">IMAP Portu (SSL)</label>
+                <input type="number" id="cfg-imap-port" value="993" required>
+              </div>
+
+              <div class="form-group">
+                <label for="cfg-smtp-host" data-i18n="label_smtp_host">SMTP Sunucu Adresi</label>
+                <input type="text" id="cfg-smtp-host" value="smtp.gmail.com" required>
+              </div>
+
+              <div class="form-group">
+                <label for="cfg-smtp-port" data-i18n="label_smtp_port">SMTP Portu (SSL)</label>
+                <input type="number" id="cfg-smtp-port" value="465" required>
+              </div>
+
+              <div class="settings-actions full-width">
+                <button type="button" id="btn-test-connection" class="btn btn-secondary">
+                  <span class="btn-text" data-i18n="btn_test_connection">IMAP ve SMTP Bağlantısını Test Et</span>
+                  <span class="btn-spinner hidden"></span>
+                </button>
+                <button type="submit" id="btn-save-settings" class="btn btn-primary">
+                  <span class="btn-text" data-i18n="btn_save_settings">Yapılandırmayı Kaydet</span>
+                  <span class="btn-spinner hidden"></span>
+                </button>
+              </div>
+            </form>
+
+            <div id="test-connection-result" class="test-result-box hidden"></div>
+          </div>
+        </div>
+
+        <!-- PURGE DATABASE VIEW -->
+        <div id="view-purge" class="view-card-container hidden">
+          <div class="purge-card">
+            <div class="card-header danger-header">
+              <div class="danger-badge">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              </div>
+              <div>
+                <h2 data-i18n="purge_title">Mesajları Veritabanından Temizle</h2>
+                <p data-i18n="purge_desc">SQLite'tan saklanan gelen e-postaları, gönderilen e-postaları veya her ikisini temizleyin. Yapılandırma ve kullanıcı bilgileri korunur.</p>
+              </div>
+            </div>
+
+            <div class="purge-stats-grid">
+              <div class="purge-stat-card">
+                <span class="stat-num" id="purge-count-inbox">0</span>
+                <span class="stat-label" data-i18n="stat_cached_inbox">Önbelleğe Alınan Gelen E-postalar</span>
+              </div>
+              <div class="purge-stat-card">
+                <span class="stat-num" id="purge-count-sent">0</span>
+                <span class="stat-label" data-i18n="stat_stored_sent">Depolanan Gönderilen E-postalar (Maks. 50)</span>
+              </div>
+            </div>
+
+            <div class="purge-options">
+              <div class="purge-option-item">
+                <div class="option-details">
+                  <h4 data-i18n="purge_sent_title">Gönderilen Mesajları Temizle</h4>
+                  <p data-i18n="purge_sent_desc">SQLite veritabanında depolanan tüm gönderilen e-postaları kalıcı olarak siler.</p>
+                </div>
+                <button id="btn-purge-sent" class="btn btn-danger-outline" data-target="sent" data-i18n="btn_purge_sent">
+                  Gönderilenleri Temizle (Yalnızca)
+                </button>
+              </div>
+
+              <div class="purge-option-item">
+                <div class="option-details">
+                  <h4 data-i18n="purge_received_title">Gelen Mesajları Temizle</h4>
+                  <p data-i18n="purge_received_desc">SQLite'ta depolanan 7 günlük gelen kutusu önbelleğini temizler. (Yeni mesajlar Gmail'den istendiğinde yeniden senkronize edilebilir).</p>
+                </div>
+                <button id="btn-purge-received" class="btn btn-danger-outline" data-target="received" data-i18n="btn_purge_received">
+                  Gelenleri Temizle (Yalnızca)
+                </button>
+              </div>
+
+              <div class="purge-option-item highlight-danger">
+                <div class="option-details">
+                  <h4 data-i18n="purge_all_title">Tüm Mesajları Temizle</h4>
+                  <p data-i18n="purge_all_desc">Tüm gönderilen ve gelen e-posta kayıtlarını siler ve disk alanını geri kazanmak için VACUUM çalıştırır.</p>
+                </div>
+                <button id="btn-purge-all" class="btn btn-danger" data-target="all" data-i18n="btn_purge_all">
+                  Tüm Mesajları Temizle
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </main>
+    </div>
+  </div>
+
+  <!-- COMPOSE EMAIL MODAL -->
+  <div id="compose-modal" class="modal-overlay">
+    <div class="compose-modal-card">
+      <div class="compose-header">
+        <div class="compose-title">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+          <h3 data-i18n="compose_title">Yeni Mesaj</h3>
+        </div>
+        <button id="btn-compose-close" class="btn-icon-sm" title="Kapat" data-i18n-title="close_tooltip">✕</button>
+      </div>
+
+      <form id="compose-form" class="compose-form">
+        <div class="compose-field">
+          <label for="compose-to" data-i18n="label_to">Kime</label>
+          <input type="email" id="compose-to" placeholder="alici@ornek.com" data-i18n-placeholder="placeholder_to" pattern="^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$" required autocomplete="off">
+          <small class="helper-text" style="color: var(--text-muted); font-size: 0.72rem; margin-top: 0.25rem;" data-i18n="helper_single_recipient">Yalnızca tek alıcı (Toplu e-posta gönderimi devre dışıdır)</small>
+        </div>
+
+        <div class="compose-field">
+          <label for="compose-subject" data-i18n="label_subject">Konu</label>
+          <input type="text" id="compose-subject" placeholder="E-posta konusu" data-i18n-placeholder="placeholder_subject" required>
+        </div>
+
+        <div class="compose-field-body">
+          <textarea id="compose-message" placeholder="Mesajınızı buraya yazın..." data-i18n-placeholder="placeholder_message" rows="12" required></textarea>
+        </div>
+
+        <div class="compose-footer">
+          <button type="button" id="btn-compose-discard" class="btn btn-ghost" data-i18n="btn_discard">Vazgeç</button>
+          <button type="submit" id="btn-compose-send" class="btn btn-primary">
+            <span class="btn-text">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" x2="11" y1="2" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+              <span data-i18n="btn_send">Mesajı Gönder</span>
+            </span>
+            <span class="btn-spinner hidden"></span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- CONFIRMATION MODAL -->
+  <div id="confirm-modal" class="modal-overlay">
+    <div class="confirm-card">
+      <h3 id="confirm-modal-title" data-i18n="confirm_title">İşlemi Onayla</h3>
+      <p id="confirm-modal-message">Bu işlemi gerçekleştirmek istediğinizden emin misiniz?</p>
+      <div class="confirm-actions">
+        <button id="btn-confirm-cancel" class="btn btn-secondary" data-i18n="btn_cancel">Vazgeç</button>
+        <button id="btn-confirm-proceed" class="btn btn-danger" data-i18n="btn_confirm_purge">Onayla ve Temizle</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/js/translations.js"></script>
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

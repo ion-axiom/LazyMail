@@ -1,0 +1,440 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# lazyadmin — Safe LazyMail VPS Administration & Nginx Deployment Tool
+# Target Server: 217.154.50.14
+# Subdomain: lazymail.derekr.co.uk -> http://127.0.0.1:3011
+# Built with multi-layer collision protection for co-hosted Quasar/Docker apps
+# ==============================================================================
+
+set -euo pipefail
+
+DOMAIN="${DOMAIN:-lazymail.derekr.co.uk}"
+PORT="${PORT:-3011}"
+SERVER_IP="217.154.50.14"
+NGINX_AVAILABLE="/etc/nginx/sites-available"
+NGINX_ENABLED="/etc/nginx/sites-enabled"
+CONF_FILE="${NGINX_AVAILABLE}/${DOMAIN}.conf"
+CONF_LINK="${NGINX_ENABLED}/${DOMAIN}.conf"
+BACKUP_DIR="/var/backups/lazyadmin"
+
+# Color formatting
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+BOLD='\033[1m'
+NC='\033[0m' # No Color
+
+log_info() {
+    echo -e "${BLUE}[INFO]${NC} $1"
+}
+
+log_success() {
+    echo -e "${GREEN}[SUCCESS]${NC} $1"
+}
+
+log_warn() {
+    echo -e "${YELLOW}[WARNING]${NC} $1"
+}
+
+log_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+log_step() {
+    echo -e "\n${BOLD}${CYAN}==>${NC} ${BOLD}$1${NC}"
+}
+
+# ------------------------------------------------------------------------------
+# 1. Root & Privilege Verification
+# ------------------------------------------------------------------------------
+check_root() {
+    if [[ $EUID -ne 0 ]]; then
+        log_error "This script requires administrative privileges."
+        echo "Please re-run: sudo ./lazyadmin $@"
+        exit 1
+    fi
+}
+
+# ------------------------------------------------------------------------------
+# 2. Pre-flight Safety Checks (Protects Co-hosted Apps)
+# ------------------------------------------------------------------------------
+
+# Safety Check A: Ensure existing Nginx server configuration is healthy
+verify_nginx_baseline() {
+    log_info "Verifying existing Nginx server health..."
+    if command -v nginx >/dev/null 2>&1; then
+        if ! nginx -t 2>/dev/null; then
+            log_error "Existing Nginx configuration has errors BEFORE lazyadmin started!"
+            echo ""
+            log_error "To protect your other running web apps, lazyadmin will NOT proceed."
+            echo "Run 'sudo nginx -t' to identify and fix existing configuration errors first."
+            exit 1
+        fi
+        log_success "Existing Nginx configuration is clean and valid."
+    fi
+}
+
+# Safety Check B: Detect if domain is already claimed by another site configuration
+check_domain_collision() {
+    log_info "Scanning for domain collisions on '${DOMAIN}'..."
+    local conflicts=()
+
+    if [ -d "${NGINX_AVAILABLE}" ]; then
+        while IFS= read -r file; do
+            # Skip LazyMail's own config
+            if [[ "$file" == "${CONF_FILE}" ]] || [[ "$file" == "${CONF_LINK}" ]]; then
+                continue
+            fi
+            # Check for exact server_name match
+            if grep -Eq "^[[:space:]]*server_name[[:space:]]+.*(\b${DOMAIN}\b)" "$file" 2>/dev/null; then
+                conflicts+=("$file")
+            fi
+        done < <(find "${NGINX_AVAILABLE}" -maxdepth 2 -type f -name "*.conf" 2>/dev/null || true)
+    fi
+
+    if [ ${#conflicts[@]} -gt 0 ]; then
+        log_error "Domain collision detected! '${DOMAIN}' is already configured in:"
+        for c in "${conflicts[@]}"; do
+            echo "   - $c"
+        done
+        log_error "Aborting to prevent corrupting another application's routing."
+        exit 1
+    fi
+    log_success "Domain '${DOMAIN}' is free and available."
+}
+
+# Safety Check C: Check port 3011 collision and inspect ports 3000-3010
+check_port_safety() {
+    log_info "Verifying port ${PORT} availability and co-hosted app isolation..."
+    
+    local port_user=""
+    if command -v ss >/dev/null 2>&1; then
+        port_user=$(ss -tlpn "( sport = :${PORT} )" 2>/dev/null | tail -n +2 || true)
+    elif command -v netstat >/dev/null 2>&1; then
+        port_user=$(netstat -tlpn 2>/dev/null | grep ":${PORT} " || true)
+    fi
+
+    if [ -n "$port_user" ]; then
+        # Check if the process occupying port 3011 is LazyMail Docker container
+        if echo "$port_user" | grep -qiE "docker|lazymail"; then
+            log_info "Port ${PORT} is currently in use by Docker (LazyMail). Safe to update proxy."
+        else
+            log_warn "Port ${PORT} is in use by an unrecognized process:"
+            echo "   $port_user"
+            echo -e "${YELLOW}Another application may be bound to port ${PORT}!${NC}"
+            echo -e "Do you want to continue anyway? [y/N] "
+            read -r -p "" reply
+            if [[ ! "$reply" =~ ^([yY][eE][sS]|[yY])$ ]]; then
+                log_error "Aborted by user to protect existing process on port ${PORT}."
+                exit 1
+            fi
+        fi
+    else
+        log_success "Port ${PORT} is free and ready for LazyMail."
+    fi
+}
+
+# ------------------------------------------------------------------------------
+# 3. Dependency Installation (Idempotent & Non-Destructive)
+# ------------------------------------------------------------------------------
+install_dependencies() {
+    log_step "Checking System Dependencies"
+    
+    local need_update=0
+    local packages=(nginx certbot python3-certbot-nginx curl)
+
+    for pkg in "${packages[@]}"; do
+        if ! dpkg -s "$pkg" >/dev/null 2>&1; then
+            log_warn "Package '$pkg' is missing. Installing safely..."
+            if [ $need_update -eq 0 ]; then
+                apt-get update -y
+                need_update=1
+            fi
+            apt-get install -y --no-install-recommends "$pkg"
+        fi
+    done
+    
+    # Ensure Nginx is running without restarting active workers
+    if ! systemctl is-active --quiet nginx; then
+        systemctl start nginx
+    fi
+    log_success "Dependencies verified. Nginx service is active."
+}
+
+# ------------------------------------------------------------------------------
+# 4. Atomic Nginx Configuration with Automatic Rollback
+# ------------------------------------------------------------------------------
+configure_nginx() {
+    log_step "Configuring Nginx Reverse Proxy for ${DOMAIN} -> 127.0.0.1:${PORT}"
+    
+    mkdir -p "${NGINX_AVAILABLE}" "${NGINX_ENABLED}" "${BACKUP_DIR}"
+
+    # Backup existing configuration if present
+    local backup_file=""
+    if [ -f "${CONF_FILE}" ]; then
+        backup_file="${BACKUP_DIR}/${DOMAIN}.conf.bak.$(date +%Y%m%d%H%M%S)"
+        cp -p "${CONF_FILE}" "${backup_file}"
+        log_info "Existing configuration backed up to: ${backup_file}"
+    fi
+
+    local temp_conf="${CONF_FILE}.tmp.$$"
+
+    # Generate new configuration in a temporary file
+    cat > "${temp_conf}" <<EOF
+# ==============================================================================
+# Nginx Reverse Proxy for LazyMail
+# Domain: ${DOMAIN}
+# Target: http://127.0.0.1:${PORT} (Internal & Protected)
+# Generated by lazyadmin on $(date -u)
+# ==============================================================================
+
+server {
+    listen 80;
+    server_name ${DOMAIN};
+
+    # Maximum attachment/body upload size
+    client_max_body_size 25M;
+
+    # Security Headers
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "no-referrer-when-downgrade" always;
+
+    # Internal Reverse Proxy
+    location / {
+        proxy_pass http://127.0.0.1:${PORT};
+        proxy_http_version 1.1;
+
+        # WebSocket / Connection upgrade
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        # Forwarded Client Headers
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header X-Forwarded-Host \$host;
+        proxy_set_header X-Forwarded-Port \$server_port;
+
+        # Operational Timeouts for IMAP Sync & Sending
+        proxy_connect_timeout 90s;
+        proxy_send_timeout 90s;
+        proxy_read_timeout 90s;
+        proxy_buffering off;
+    }
+}
+EOF
+
+    # Move temporary file into sites-available
+    mv -f "${temp_conf}" "${CONF_FILE}"
+
+    # Create symlink in sites-enabled
+    if [ -L "${CONF_LINK}" ]; then
+        rm -f "${CONF_LINK}"
+    fi
+    ln -s "${CONF_FILE}" "${CONF_LINK}"
+
+    # Atomic syntax validation
+    log_info "Validating new Nginx configuration..."
+    if nginx -t >/dev/null 2>&1; then
+        # Graceful reload — DOES NOT drop connections to other apps
+        systemctl reload nginx
+        log_success "Nginx reloaded successfully. Other running apps were NOT disrupted."
+    else
+        echo ""
+        log_error "Nginx configuration test failed! Initiating automatic rollback..."
+        rm -f "${CONF_LINK}"
+        if [ -n "${backup_file}" ] && [ -f "${backup_file}" ]; then
+            cp -p "${backup_file}" "${CONF_FILE}"
+            ln -s "${CONF_FILE}" "${CONF_LINK}"
+            log_info "Restored previous working configuration from backup."
+        else
+            rm -f "${CONF_FILE}"
+            log_info "Removed problematic configuration."
+        fi
+
+        # Verify Nginx is clean again
+        nginx -t || true
+        log_error "Deployment halted. Your other web applications remain safe and operational."
+        exit 1
+    fi
+}
+
+# ------------------------------------------------------------------------------
+# 5. Safe SSL Configuration (Domain Scoped)
+# ------------------------------------------------------------------------------
+configure_ssl() {
+    log_step "Checking SSL / HTTPS for ${DOMAIN}"
+
+    # Check DNS propagation to avoid Let's Encrypt rate-limiting errors
+    local dns_matched=0
+    if command -v host >/dev/null 2>&1; then
+        local resolved_ip
+        resolved_ip=$(host "${DOMAIN}" 2>/dev/null | awk '/has address/ { print $4 }' | head -n1 || true)
+        if [ -n "$resolved_ip" ]; then
+            if [ "$resolved_ip" == "$SERVER_IP" ]; then
+                log_success "DNS verified: ${DOMAIN} points to ${SERVER_IP}."
+                dns_matched=1
+            else
+                log_warn "DNS mismatch: ${DOMAIN} resolves to '${resolved_ip}', but this server is '${SERVER_IP}'."
+                log_warn "Let's Encrypt validation will fail if DNS does not point to this server."
+            fi
+        else
+            log_warn "DNS lookup: Could not resolve ${DOMAIN} yet."
+        fi
+    else
+        dns_matched=1 # Cannot test with host, proceed to prompt
+    fi
+
+    echo -e "${CYAN}Would you like to obtain/renew a free SSL certificate for ${BOLD}${DOMAIN}${CYAN}? [Y/n]${NC} "
+    read -r -p "" reply
+    reply=${reply:-Y}
+
+    if [[ "$reply" =~ ^([yY][eE][sS]|[yY])$ ]]; then
+        log_info "Running Certbot specifically for ${DOMAIN}..."
+        # Safely invoke Certbot only for this domain
+        if certbot --nginx -d "${DOMAIN}" --non-interactive --agree-tos --redirect --register-unsafely-without-email; then
+            systemctl reload nginx
+            log_success "SSL certificate installed and HTTPS redirection active for ${DOMAIN}!"
+        else
+            log_warn "Certbot was unable to complete SSL verification at this moment."
+            log_warn "Nginx HTTP (port 80) proxy is still operational. You can run 'sudo ./lazyadmin ssl' once DNS is propagated."
+            # Verify Nginx didn't get corrupted
+            nginx -t && systemctl reload nginx || true
+        fi
+    else
+        log_info "Skipping SSL setup. You can run 'sudo ./lazyadmin ssl' at any time."
+    fi
+}
+
+# ------------------------------------------------------------------------------
+# 6. Status and Port Inspection Commands
+# ------------------------------------------------------------------------------
+show_ports() {
+    echo ""
+    echo -e "${BOLD}==================================================${NC}"
+    echo -e "${BOLD}       Co-Hosted App Ports Inspection (3000-3020)  ${NC}"
+    echo -e "${BOLD}==================================================${NC}"
+    
+    if command -v ss >/dev/null 2>&1; then
+        echo -e "${CYAN}Active Listening Ports:${NC}"
+        ss -tlpn | grep -E "(:300[0-9]|:301[0-9]|:3020)\b" || echo "No processes found in range 3000-3020."
+    elif command -v netstat >/dev/null 2>&1; then
+        netstat -tlpn | grep -E "(:300[0-9]|:301[0-9]|:3020)\b" || echo "No processes found in range 3000-3020."
+    fi
+
+    echo ""
+    echo -e "${BOLD}Active Docker Containers:${NC}"
+    if command -v docker >/dev/null 2>&1; then
+        docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+    else
+        echo "Docker CLI not detected."
+    fi
+    echo -e "${BOLD}==================================================${NC}"
+    echo ""
+}
+
+show_status() {
+    echo ""
+    echo -e "${BOLD}==================================================${NC}"
+    echo -e "${BOLD}            LazyMail Service Status               ${NC}"
+    echo -e "${BOLD}==================================================${NC}"
+    echo -e "Server IPv4:       ${CYAN}${SERVER_IP}${NC}"
+    echo -e "Subdomain:         ${CYAN}${DOMAIN}${NC}"
+    echo -e "Internal Bind:     ${CYAN}127.0.0.1:${PORT}${NC} (Protected from WAN)"
+    echo -e "Nginx Config:      ${CYAN}${CONF_FILE}${NC}"
+    echo ""
+    
+    echo -e "${BOLD}Nginx Web Server:${NC}"
+    if systemctl is-active --quiet nginx; then
+        echo -e "  Status: ${GREEN}Active (Running)${NC}"
+    else
+        echo -e "  Status: ${RED}Inactive${NC}"
+    fi
+
+    echo ""
+    echo -e "${BOLD}LazyMail Docker Container:${NC}"
+    if command -v docker >/dev/null 2>&1; then
+        if docker ps --filter "name=lazymail-app" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep -q "lazymail-app"; then
+            docker ps --filter "name=lazymail-app" --format "table   {{.Names}}\t{{.Status}}\t{{.Ports}}"
+        else
+            echo -e "  Status: ${YELLOW}lazymail-app is not currently running${NC}"
+            echo -e "  Launch with: ${BOLD}docker compose up -d${NC}"
+        fi
+    fi
+
+    echo ""
+    echo -e "${BOLD}Internal Port ${PORT} Health:${NC}"
+    if curl -s -f "http://127.0.0.1:${PORT}/api/auth/status" >/dev/null 2>&1; then
+        echo -e "  Healthcheck: ${GREEN}OK (Responding on 127.0.0.1:${PORT})${NC}"
+    else
+        echo -e "  Healthcheck: ${YELLOW}Pending (App starting or stopped)${NC}"
+    fi
+    echo -e "${BOLD}==================================================${NC}"
+    echo -e "Public URL: ${GREEN}https://${DOMAIN}${NC} (or http://${DOMAIN})"
+    echo ""
+}
+
+# ------------------------------------------------------------------------------
+# 7. Command Router
+# ------------------------------------------------------------------------------
+main() {
+    local cmd="${1:-setup}"
+
+    case "$cmd" in
+        setup)
+            check_root "$@"
+            echo -e "${BOLD}==================================================${NC}"
+            echo -e "${BOLD}   LazyMail Safe Admin Setup — ${DOMAIN}   ${NC}"
+            echo -e "${BOLD}==================================================${NC}"
+            verify_nginx_baseline
+            check_domain_collision
+            check_port_safety
+            install_dependencies
+            configure_nginx
+            configure_ssl
+            show_status
+            ;;
+        ssl)
+            check_root "$@"
+            verify_nginx_baseline
+            install_dependencies
+            configure_ssl
+            ;;
+        ports)
+            show_ports
+            ;;
+        status)
+            show_status
+            ;;
+        test)
+            log_info "Running Nginx syntax test..."
+            nginx -t
+            echo ""
+            log_info "Testing internal localhost:${PORT} query..."
+            curl -I "http://127.0.0.1:${PORT}/api/auth/status" || true
+            ;;
+        help|--help|-h)
+            echo "Usage: sudo ./lazyadmin [command]"
+            echo ""
+            echo "Commands:"
+            echo "  setup     (Default) Run pre-flight collision checks, configure Nginx, and setup SSL"
+            echo "  ports     Inspect active listening ports (3000-3020) and Docker containers"
+            echo "  status    Show status of Nginx, LazyMail container, and internal port 3011"
+            echo "  ssl       Obtain or renew SSL certificate for ${DOMAIN}"
+            echo "  test      Run 'nginx -t' and query localhost:${PORT}"
+            echo "  help      Show this help message"
+            ;;
+        *)
+            log_error "Unknown command: $cmd"
+            echo "Run 'sudo ./lazyadmin help' for available commands."
+            exit 1
+            ;;
+    esac
+}
+
+main "$@"

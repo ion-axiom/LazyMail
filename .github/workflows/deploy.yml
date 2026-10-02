@@ -1,0 +1,110 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  # ============================================================================
+  # Stage 1: Run Automated Tests
+  # ============================================================================
+  test:
+    name: Run Unit & Integration Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio httpx
+
+      - name: Run Pytest Suite
+        run: |
+          pytest tests/ -v
+
+  # ============================================================================
+  # Stage 2: Deploy to Ionos Linux (Debian) VPS
+  # ============================================================================
+  deploy:
+    name: Deploy to Ionos Debian VPS
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_SSH_PORT || 22 }}
+          script: |
+            set -e
+
+            # Target directory on VPS (defaults to /opt/lazymail if DEPLOY_PATH secret not set)
+            TARGET_DIR="${{ secrets.DEPLOY_PATH || '/opt/lazymail' }}"
+            
+            echo "==> Deploying to $TARGET_DIR..."
+
+            # 1. Ensure directory exists or clone repository
+            if [ ! -d "$TARGET_DIR/.git" ]; then
+              echo "==> Initializing repository at $TARGET_DIR..."
+              mkdir -p "$TARGET_DIR"
+              git clone https://github.com/${{ github.repository }}.git "$TARGET_DIR"
+            fi
+
+            cd "$TARGET_DIR"
+
+            # 2. Fetch and pull latest changes from main
+            echo "==> Pulling latest changes from main branch..."
+            git fetch --all
+            git reset --hard origin/main
+
+            # 3. Ensure persistent data directory exists with correct permissions
+            mkdir -p data
+
+            # 4. Verify/generate .env file if it does not exist (enforcing port 3011)
+            if [ ! -f .env ]; then
+              echo "HOST_PORT=3011" > .env
+              echo "==> Created default .env with HOST_PORT=3011"
+            else
+              # Ensure HOST_PORT is set to 3011 in existing .env
+              if ! grep -q "^HOST_PORT=" .env; then
+                echo "HOST_PORT=3011" >> .env
+              fi
+            fi
+
+            # 5. Build and launch container using Docker Compose
+            echo "==> Building and restarting Docker containers..."
+            docker compose down || true
+            docker compose up -d --build
+
+            # 6. Verify container health status
+            echo "==> Waiting for container to become healthy..."
+            sleep 5
+            docker compose ps
+            
+            # 7. Check if port 3011 responds on localhost
+            if command -v curl >/dev/null 2>&1; then
+              curl -f http://127.0.0.1:3011/api/auth/status || echo "Warning: Healthcheck endpoint check pending initialization"
+            fi
+
+            # 8. Clean up unused Docker build cache and images
+            docker image prune -f
+
+            echo "==> Deployment completed successfully on port 3011!"

@@ -1,0 +1,27 @@
+# Version control & environments
+.git
+.gitignore
+.venv
+venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+
+# Sensitive and persistent data (must be mounted via volumes, never baked in)
+data
+*.db
+*.sqlite3
+.secret.key
+.env
+
+# Testing & Dev
+tests
+.pytest_cache
+.coverage
+htmlcov
+.DS_Store
+.idea
+.vscode
+*.md
+start.sh
