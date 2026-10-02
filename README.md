@@ -150,16 +150,18 @@ To coexist alongside other Quasar and Docker applications running on ports `3000
 - [`.dockerignore`](file:///Users/lifehance/Development/LazyMail/.dockerignore): Prevents local virtual environments, test databases, or secret keys from leaking into the Docker image.
 - [`.github/workflows/deploy.yml`](file:///Users/lifehance/Development/LazyMail/.github/workflows/deploy.yml): Runs tests with `pytest` on every push/PR, then automatically SSHs into the Ionos VPS on pushes to `main` to build and deploy.
 
-### 2. GitHub Secrets Setup
-In your GitHub repository, navigate to **Settings > Secrets and variables > Actions > New repository secret** and add the following:
+### 2. GitHub Secrets & Variables Setup
+In your GitHub repository, navigate to **Settings > Secrets and variables > Actions**:
 
-| Secret Name | Description | Example Value |
+#### Repository Variables (or Secrets)
+| Name | Type | Description |
 |---|---|---|
-| `VPS_HOST` | Public IP or hostname of your Ionos VPS | `217.160.x.x` or `vps.example.com` |
-| `VPS_USER` | SSH user with sudo/Docker privileges | `root` or `debian` |
-| `VPS_SSH_KEY` | Private SSH key (matching `~/.ssh/authorized_keys` on VPS) | `-----BEGIN OPENSSH PRIVATE KEY-----...` |
-| `VPS_SSH_PORT` | *(Optional)* SSH Port (defaults to `22`) | `22` |
-| `DEPLOY_PATH` | *(Optional)* Absolute directory on VPS (defaults to `/opt/lazymail`) | `/opt/lazymail` |
+| `SERVER_IP` | **Variable** (or Secret) | Public IPv4 address of your Ionos VPS |
+| `VPS_USER` | Secret | SSH user with sudo/Docker privileges (`root` or `debian`) |
+| `VPS_SSH_KEY` | Secret | Private SSH key matching `~/.ssh/authorized_keys` on VPS |
+| `VPS_SSH_PORT` | *(Optional Secret)* | SSH Port (defaults to `22`) |
+| `DEPLOY_PATH` | *(Optional Secret)* | Absolute directory on VPS (defaults to `/opt/lazymail`) |
+| `VPS_HOST` | *(Optional fallback)* | Alternative name for `SERVER_IP` |
 
 ### 3. One-Time Setup on Ionos Debian VPS
 

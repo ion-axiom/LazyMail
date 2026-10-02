@@ -51,7 +51,7 @@ jobs:
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.VPS_HOST }}
+          host: ${{ vars.SERVER_IP || secrets.SERVER_IP || secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_SSH_PORT || 22 }}
@@ -60,6 +60,7 @@ jobs:
 
             # Target directory on VPS (defaults to /opt/lazymail if DEPLOY_PATH secret not set)
             TARGET_DIR="${{ secrets.DEPLOY_PATH || '/opt/lazymail' }}"
+            SERVER_IP_VAL="${{ vars.SERVER_IP || secrets.SERVER_IP || secrets.VPS_HOST }}"
             
             echo "==> Deploying to $TARGET_DIR..."
 
@@ -80,7 +81,7 @@ jobs:
             # 3. Ensure persistent data directory exists with correct permissions
             mkdir -p data
 
-            # 4. Verify/generate .env file if it does not exist (enforcing port 3011)
+            # 4. Verify/generate .env file if it does not exist (enforcing port 3011 and SERVER_IP)
             if [ ! -f .env ]; then
               echo "HOST_PORT=3011" > .env
               echo "==> Created default .env with HOST_PORT=3011"
@@ -88,6 +89,15 @@ jobs:
               # Ensure HOST_PORT is set to 3011 in existing .env
               if ! grep -q "^HOST_PORT=" .env; then
                 echo "HOST_PORT=3011" >> .env
+              fi
+            fi
+
+            # Keep SERVER_IP in sync with GitHub variable if supplied
+            if [ -n "$SERVER_IP_VAL" ]; then
+              if ! grep -q "^SERVER_IP=" .env; then
+                echo "SERVER_IP=$SERVER_IP_VAL" >> .env
+              else
+                sed -i "s/^SERVER_IP=.*/SERVER_IP=$SERVER_IP_VAL/" .env
               fi
             fi
 

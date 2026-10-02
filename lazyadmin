@@ -10,8 +10,17 @@ set -euo pipefail
 DOMAIN="${DOMAIN:-lazymail.derekr.co.uk}"
 PORT="${PORT:-3011}"
 
-# Dynamically discover host public IPv4 or accept override via environment variable
+# Dynamically discover host public IPv4 or accept override via environment variable or .env
 detect_server_ip() {
+    if [ -f .env ]; then
+        local env_ip
+        env_ip=$(grep "^SERVER_IP=" .env 2>/dev/null | cut -d '=' -f2- | tr -d '"' | tr -d "'" | tr -d ' ' || true)
+        if [ -n "$env_ip" ]; then
+            echo "$env_ip"
+            return
+        fi
+    fi
+
     local ip=""
     ip=$(curl -s4 --max-time 3 https://api.ipify.org 2>/dev/null || \
          curl -s4 --max-time 3 https://ifconfig.me 2>/dev/null || \
