@@ -2,6 +2,11 @@ import os
 from pathlib import Path
 from cryptography.fernet import Fernet
 
+APP_NAME = "LazyMail"
+APP_VERSION = "1.0.0"
+APP_AUTHOR = "Derek Richards (DerekR)"
+APP_AUTHOR_ALIAS = "DerekR"
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data"
 DATA_DIR.mkdir(exist_ok=True)

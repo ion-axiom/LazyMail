@@ -1,9 +1,14 @@
 # ==============================================================================
 # LazyMail — Dockerfile
+# Author: Derek Richards (alias: DerekR)
+# Version: 1.0.0
 # Production-ready Python 3.11 Slim Image
 # ==============================================================================
 
 FROM python:3.11-slim
+
+LABEL maintainer="Derek Richards (DerekR)"
+LABEL version="1.0.0"
 
 # Prevent Python from writing .pyc files and enable unbuffered logging
 ENV PYTHONDONTWRITEBYTECODE=1 \

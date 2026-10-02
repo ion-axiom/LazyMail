@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
-# LazyMail Quick Launcher
+# ==============================================================================
+# LazyMail — Quick Launcher
+# Author: Derek Richards (alias: DerekR)
+# Version: 1.0.0
+# ==============================================================================
 set -e
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"

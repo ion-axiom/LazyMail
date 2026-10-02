@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # ==============================================================================
 # lazyadmin — Safe LazyMail VPS Administration & Nginx Deployment Tool
+# Author: Derek Richards (alias: DerekR)
+# Version: 1.0.0
 # Subdomain: lazymail.derekr.co.uk -> http://127.0.0.1:3011
 # Built with multi-layer collision protection for co-hosted Quasar/Docker apps
 # ==============================================================================

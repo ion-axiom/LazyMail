@@ -41,14 +41,27 @@ from app.email_service import (
     test_credentials,
     validate_single_recipient
 )
-from app.config import BASE_DIR, MAX_SENT_EMAILS, MAX_INBOX_EMAILS, INBOX_DAYS_LIMIT
+from app.config import (
+    BASE_DIR,
+    MAX_SENT_EMAILS,
+    MAX_INBOX_EMAILS,
+    INBOX_DAYS_LIMIT,
+    APP_VERSION,
+    APP_AUTHOR,
+    APP_AUTHOR_ALIAS
+)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
     yield
 
-app = FastAPI(title="LazyMail Client", version="1.0.0", lifespan=lifespan)
+app = FastAPI(
+    title="LazyMail Client",
+    description=f"LazyMail Client v{APP_VERSION} by {APP_AUTHOR}",
+    version=APP_VERSION,
+    lifespan=lifespan
+)
 
 # Static files
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
@@ -108,6 +121,10 @@ async def auth_status(request: Request):
     current_user = get_current_user_optional(request)
     cfg = get_email_config()
     return {
+        "app_name": "LazyMail",
+        "app_version": APP_VERSION,
+        "app_author": APP_AUTHOR,
+        "app_author_alias": APP_AUTHOR_ALIAS,
         "setup_required": user_count == 0,
         "logged_in": current_user is not None,
         "username": current_user["username"] if current_user else None,

@@ -157,6 +157,8 @@ def test_fastapi_endpoints():
     assert res.status_code == 200
     data = res.json()
     assert "setup_required" in data
+    assert data["app_version"] == "1.0.0"
+    assert "Derek Richards" in data["app_author"]
 
 def test_full_api_user_flow():
     client = TestClient(app)

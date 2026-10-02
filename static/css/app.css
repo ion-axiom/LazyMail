@@ -1631,3 +1631,21 @@ button, input, textarea {
   }
 }
 
+/* Sidebar Footer Credits */
+.sidebar-credits {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  margin-top: 0.65rem;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  opacity: 0.85;
+  letter-spacing: 0.01em;
+}
+
+.credit-sep {
+  opacity: 0.4;
+}
+
