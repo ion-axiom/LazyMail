@@ -195,7 +195,7 @@ sudo chown -R $USER:$USER /opt/lazymail
 
 LazyMail includes the [`lazyadmin`](file:///Users/lifehance/Development/LazyMail/lazyadmin) management script to automatically configure Nginx for `lazymail.derekr.co.uk`, bind port `3011` strictly to `127.0.0.1` (protecting it from direct public access), and configure Let's Encrypt SSL.
 
-On your VPS at `217.154.50.14`:
+On your Linux (Debian) VPS:
 ```bash
 cd /opt/lazymail
 sudo ./lazyadmin setup
@@ -206,7 +206,7 @@ The script automatically executes **5 safety checks** before modifying anything 
 2. **Domain Collision Check**: Scans all files in `/etc/nginx/sites-available` to prevent accidentally overwriting or clashing with another website.
 3. **Port Isolation Check**: Checks `3011` and ensures existing Quasar/Docker apps on `3000-3010` remain untouched.
 4. **Atomic Configuration with Rollback**: Creates a timestamped backup; if the new config fails validation, it rolls back automatically without reloading Nginx.
-5. **DNS Pre-Validation for SSL**: Verifies `lazymail.derekr.co.uk` resolves to `217.154.50.14` before running Certbot to prevent failed challenges.
+5. **DNS Pre-Validation for SSL**: Dynamically verifies `lazymail.derekr.co.uk` resolves to the server's public IP before running Certbot to prevent failed challenges.
 
 #### Additional `lazyadmin` Commands:
 ```bash

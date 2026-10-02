@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
 # lazyadmin — Safe LazyMail VPS Administration & Nginx Deployment Tool
-# Target Server: 217.154.50.14
 # Subdomain: lazymail.derekr.co.uk -> http://127.0.0.1:3011
 # Built with multi-layer collision protection for co-hosted Quasar/Docker apps
 # ==============================================================================
@@ -10,7 +9,16 @@ set -euo pipefail
 
 DOMAIN="${DOMAIN:-lazymail.derekr.co.uk}"
 PORT="${PORT:-3011}"
-SERVER_IP="217.154.50.14"
+
+# Dynamically discover host public IPv4 or accept override via environment variable
+detect_server_ip() {
+    local ip=""
+    ip=$(curl -s4 --max-time 3 https://api.ipify.org 2>/dev/null || \
+         curl -s4 --max-time 3 https://ifconfig.me 2>/dev/null || \
+         hostname -I 2>/dev/null | awk '{print $1}' || true)
+    echo "${ip:-127.0.0.1}"
+}
+SERVER_IP="${SERVER_IP:-$(detect_server_ip)}"
 NGINX_AVAILABLE="/etc/nginx/sites-available"
 NGINX_ENABLED="/etc/nginx/sites-enabled"
 CONF_FILE="${NGINX_AVAILABLE}/${DOMAIN}.conf"
