@@ -25,6 +25,7 @@ from app.database import (
     get_sent_emails,
     get_sent_email_by_id,
     purge_messages,
+    cleanup_expired_sessions,
     get_stats,
     upsert_google_user,
     save_google_tokens,
@@ -196,6 +197,10 @@ async def setup_admin(req: SetupRequest, response: Response):
         smtp_use_ssl=1
     )
 
+    # Purge cached messages upon initial setup/login; the session will be used for persistence
+    purge_messages("all")
+    cleanup_expired_sessions()
+
     response.set_cookie(
         key="lazymail_session",
         value=token,
@@ -225,6 +230,10 @@ async def login(req: LoginRequest, request: Request, response: Response):
     update_user_last_login(user["id"])
     token = create_user_session(user["id"])
 
+    # Auto-purge message cache upon login; the established session is used for database persistence
+    purge_messages("all")
+    cleanup_expired_sessions()
+
     response.set_cookie(
         key="lazymail_session",
         value=token,
@@ -240,6 +249,7 @@ async def logout(request: Request, response: Response):
     token = request.cookies.get("lazymail_session")
     if token:
         delete_session(token)
+    cleanup_expired_sessions()
     response.delete_cookie(key="lazymail_session", path="/")
     return {"message": "Logged out successfully"}
 
@@ -383,6 +393,11 @@ async def google_callback(request: Request, code: Optional[str] = None, state: O
 
         # 6. Issue user session cookie
         session_token = create_user_session(user_id)
+
+        # Auto-purge message cache upon OAuth login; the established session is used for database persistence
+        purge_messages("all")
+        cleanup_expired_sessions()
+
         redirect = RedirectResponse(url="/", status_code=303)
         redirect.set_cookie(
             key="lazymail_session",

@@ -280,4 +280,75 @@ def test_fifo_received_emails_capping_and_ordering():
         time_next = inbox[j + 1]["received_at"]
         assert time_current >= time_next, f"Message at index {j} ({time_current}) should be newer than {j+1} ({time_next})"
 
+def test_database_purged_after_login_and_persists_during_session():
+    """Verify that messages database is purged upon login, and then persists messages for the active session."""
+    client = TestClient(app)
+
+    # 1. Populate dummy messages in the database
+    save_sent_email("old_recipient@example.com", "Old Subject", "Old Body")
+    upsert_received_email({
+        "message_id": "<old-msg@example.com>",
+        "sender": "Old Sender",
+        "sender_email": "oldsender@example.com",
+        "recipient": "me@example.com",
+        "subject": "Old Message",
+        "snippet": "Old snippet",
+        "body_plain": "Old plain",
+        "body_html": "<p>Old html</p>",
+        "received_at": "2026-09-01 12:00:00"
+    })
+
+    assert len(get_sent_emails()) >= 1
+    assert len(get_received_emails()) >= 1
+
+    # 2. Log in
+    status_res = client.get("/api/auth/status")
+    if status_res.json()["setup_required"]:
+        login_res = client.post("/api/auth/setup", json={"username": "test_purge_user", "password": "TestPassword123!"})
+    else:
+        # Create user if needed
+        from app.database import create_user, get_user_by_username
+        from app.crypto_utils import hash_password
+        if not get_user_by_username("test_purge_user"):
+            create_user("test_purge_user", hash_password("TestPassword123!"))
+        login_res = client.post("/api/auth/login", json={"username": "test_purge_user", "password": "TestPassword123!"})
+
+    assert login_res.status_code == 200
+
+    # 3. Verify messages database was purged upon login
+    assert len(get_sent_emails()) == 0
+    assert len(get_received_emails()) == 0
+
+    # 4. During the active session, persist new messages
+    save_sent_email("session_recipient@example.com", "Session Subject", "Session Body")
+    upsert_received_email({
+        "message_id": "<session-msg@example.com>",
+        "sender": "Session Sender",
+        "sender_email": "sessionsender@example.com",
+        "recipient": "me@example.com",
+        "subject": "Session Message",
+        "snippet": "Session snippet",
+        "body_plain": "Session plain",
+        "body_html": "<p>Session html</p>",
+        "received_at": "2026-10-03 12:00:00"
+    })
+
+    # Verify messages are persisted in SQLite for this session
+    sent_list = client.get("/api/emails/sent")
+    assert sent_list.status_code == 200
+    assert len(sent_list.json()["emails"]) == 1
+    assert sent_list.json()["emails"][0]["recipient"] == "session_recipient@example.com"
+
+    inbox_list = client.get("/api/emails/inbox")
+    assert inbox_list.status_code == 200
+    assert len(inbox_list.json()["emails"]) == 1
+    assert inbox_list.json()["emails"][0]["subject"] == "Session Message"
+
+    # 5. When logging in anew, verify messages are purged again
+    login_res2 = client.post("/api/auth/login", json={"username": "test_purge_user", "password": "TestPassword123!"})
+    assert login_res2.status_code == 200
+    assert len(get_sent_emails()) == 0
+    assert len(get_received_emails()) == 0
+
+
 

@@ -124,6 +124,7 @@ globalScope.translations = {
     // Purge View
     purge_title: "Mesajları Veritabanından Temizle",
     purge_desc: "SQLite'tan saklanan gelen e-postaları, gönderilen e-postaları veya her ikisini temizleyin. Yapılandırma ve kullanıcı bilgileri korunur.",
+    purge_session_note: "Veritabanındaki mesajlar her oturum açıldığında (login) otomatik olarak temizlenir; oturum süresince gelen ve giden e-postalar veritabanında saklanmaya devam eder.",
     stat_cached_inbox: "Önbelleğe Alınan Gelen E-postalar",
     stat_stored_sent: "Depolanan Gönderilen E-postalar (Maks. 50)",
     purge_sent_title: "Gönderilen Mesajları Temizle",
@@ -291,6 +292,7 @@ globalScope.translations = {
     // Purge View
     purge_title: "Purge Messages from Database",
     purge_desc: "Purge stored received messages, sent messages, or both from SQLite. Configuration and user credentials are safe.",
+    purge_session_note: "Messages in the database are automatically purged upon each login; incoming and outgoing emails are persisted in the database for the active session.",
     stat_cached_inbox: "Received Emails Cached",
     stat_stored_sent: "Sent Emails Stored (Max 50)",
     purge_sent_title: "Purge Sent Messages",
