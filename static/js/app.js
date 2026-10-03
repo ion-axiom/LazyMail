@@ -273,19 +273,88 @@ async function apiRequest(endpoint, options = {}) {
 // --- AUTH & INITIALIZATION ---
 async function checkAuthStatus() {
   try {
+    // Handle error parameters passed from Google OAuth callback redirects
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.has('error')) {
+      const errCode = urlParams.get('error');
+      let msg = 'Google Giriş Hatası: ' + errCode;
+      if (errCode === 'oauth_not_configured') {
+        msg = 'Google OAuth istemci bilgileri henüz girilmedi. Lütfen Client ID ve Secret girin.';
+        setTimeout(() => openOAuthModal(), 400);
+      } else if (errCode === 'access_denied') {
+        msg = 'Google ile giriş işlemi kullanıcı tarafından iptal edildi.';
+      }
+      showToast(msg, 'error', 6000);
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+
     const status = await apiRequest('/api/auth/status');
+    state.authStatus = status;
+
     if (status.setup_required) {
       showAuthModal(true);
     } else if (!status.logged_in) {
       showAuthModal(false);
     } else {
       hideAuthModal();
-      setLoggedInUser(status.username);
+      setLoggedInUser(status.display_name || status.username, status.avatar_url);
       updateConnectionStatus(status.has_email_config, status.configured_email);
       await loadInitialData();
     }
+    updateOAuthSettingsUI(status);
   } catch (err) {
     showToast(err.message, 'error');
+  }
+}
+
+function updateOAuthSettingsUI(status) {
+  const googleCard = document.getElementById('google-connected-card');
+  const appPwBanner = document.getElementById('settings-app-password-banner');
+  const oauthAvatar = document.getElementById('oauth-user-avatar');
+  const oauthName = document.getElementById('oauth-user-name');
+  const oauthEmail = document.getElementById('oauth-user-email');
+
+  if (status && status.is_google_authenticated) {
+    if (googleCard) googleCard.classList.remove('hidden');
+    if (appPwBanner) appPwBanner.classList.add('hidden');
+    if (oauthName) oauthName.innerText = status.display_name || status.username || 'Google User';
+    if (oauthEmail) oauthEmail.innerText = status.configured_email || '';
+    if (oauthAvatar) {
+      if (status.avatar_url) {
+        oauthAvatar.src = status.avatar_url;
+        oauthAvatar.style.display = 'block';
+      } else {
+        oauthAvatar.style.display = 'none';
+      }
+    }
+  } else {
+    if (googleCard) googleCard.classList.add('hidden');
+    if (appPwBanner) appPwBanner.classList.remove('hidden');
+  }
+}
+
+function openOAuthModal() {
+  const modal = document.getElementById('modal-oauth-config');
+  if (modal) {
+    modal.classList.remove('hidden');
+    loadOAuthClientConfig();
+  }
+}
+
+function closeOAuthModal() {
+  const modal = document.getElementById('modal-oauth-config');
+  if (modal) modal.classList.add('hidden');
+}
+
+async function loadOAuthClientConfig() {
+  try {
+    const cfg = await apiRequest('/api/auth/google/config');
+    const clientIdInput = document.getElementById('oauth-client-id');
+    if (clientIdInput && cfg.client_id) {
+      clientIdInput.value = cfg.client_id;
+    }
+  } catch (err) {
+    console.error('Failed to load OAuth config:', err);
   }
 }
 
@@ -308,10 +377,14 @@ function hideAuthModal() {
   elements.authModal.classList.remove('active');
 }
 
-function setLoggedInUser(username) {
+function setLoggedInUser(username, avatarUrl) {
   state.user = username;
   elements.currentUsernameDisplay.innerText = username || 'Admin';
-  elements.userAvatarInitials.innerText = (username || 'A').charAt(0).toUpperCase();
+  if (avatarUrl) {
+    elements.userAvatarInitials.innerHTML = `<img src="${avatarUrl}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
+  } else {
+    elements.userAvatarInitials.innerText = (username || 'A').charAt(0).toUpperCase();
+  }
 }
 
 function updateConnectionStatus(isConfigured, email) {
@@ -1161,6 +1234,50 @@ function initEventListeners() {
     state.pendingPurgeTarget = null;
   });
   elements.btnConfirmProceed.addEventListener('click', executePurge);
+
+  // Google OAuth UI & Modal Events
+  const btnOpenOAuth = document.getElementById('btn-open-oauth-modal');
+  if (btnOpenOAuth) btnOpenOAuth.addEventListener('click', openOAuthModal);
+
+  const btnCloseOAuth = document.getElementById('btn-close-oauth-modal');
+  if (btnCloseOAuth) btnCloseOAuth.addEventListener('click', closeOAuthModal);
+
+  const btnCancelOAuth = document.getElementById('btn-cancel-oauth-modal');
+  if (btnCancelOAuth) btnCancelOAuth.addEventListener('click', closeOAuthModal);
+
+  const formOAuth = document.getElementById('form-oauth-config');
+  if (formOAuth) {
+    formOAuth.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const clientId = document.getElementById('oauth-client-id').value.trim();
+      const clientSecret = document.getElementById('oauth-client-secret').value.trim();
+      try {
+        await apiRequest('/api/auth/google/config', {
+          method: 'POST',
+          body: JSON.stringify({ client_id: clientId, client_secret: clientSecret })
+        });
+        showToast(t('oauth_config_saved') || 'Google OAuth ayarları başarıyla kaydedildi!', 'success');
+        closeOAuthModal();
+        checkAuthStatus();
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    });
+  }
+
+  const btnDisconnectGoogle = document.getElementById('btn-disconnect-google');
+  if (btnDisconnectGoogle) {
+    btnDisconnectGoogle.addEventListener('click', async () => {
+      if (!confirm(t('confirm_disconnect_google') || 'Google hesabının bağlantısını kesmek istediğinize emin misiniz?')) return;
+      try {
+        await apiRequest('/api/auth/google/disconnect', { method: 'POST' });
+        showToast(t('google_disconnected') || 'Google hesabı bağlantısı kesildi.', 'info');
+        checkAuthStatus();
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    });
+  }
 }
 
 // --- BOOTSTRAP ---

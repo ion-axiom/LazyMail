@@ -114,6 +114,43 @@ def _init_schema(conn: sqlite3.Connection):
             );
         END;
     """)
+
+    # Google OAuth 2.0 Tokens Table
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS google_tokens (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            user_id INTEGER NOT NULL,
+            encrypted_refresh_token TEXT NOT NULL,
+            access_token TEXT,
+            access_token_expires_at TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+    """)
+
+    # Google OAuth 2.0 Client Credentials Config Table
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS oauth_config (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            client_id TEXT NOT NULL,
+            client_secret TEXT NOT NULL,
+            redirect_uri TEXT,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    """)
+
+    # Graceful column migrations for users table
+    for col, col_type in [
+        ("google_id", "TEXT"),
+        ("email", "TEXT"),
+        ("display_name", "TEXT"),
+        ("avatar_url", "TEXT")
+    ]:
+        try:
+            conn.execute(f"ALTER TABLE users ADD COLUMN {col} {col_type}")
+        except Exception:
+            pass
+
     conn.commit()
 
 def init_db():
@@ -160,6 +197,115 @@ def update_user_password(user_id: int, password_hash: str):
             (password_hash, user_id)
         )
         conn.commit()
+
+def upsert_google_user(google_id: str, email: str, display_name: str, avatar_url: str) -> int:
+    """Create or update a user authenticated via Google OAuth 2.0."""
+    clean_email = email.strip().lower()
+    username = clean_email.split("@")[0]
+    with get_db_connection() as conn:
+        row = conn.execute(
+            "SELECT id FROM users WHERE google_id = ? OR LOWER(email) = ? OR LOWER(username) = ?",
+            (google_id, clean_email, username)
+        ).fetchone()
+        if row:
+            user_id = row["id"]
+            conn.execute(
+                """UPDATE users SET 
+                    google_id = ?, 
+                    email = ?, 
+                    display_name = ?, 
+                    avatar_url = ?, 
+                    last_login = CURRENT_TIMESTAMP 
+                WHERE id = ?""",
+                (google_id, clean_email, display_name, avatar_url, user_id)
+            )
+            conn.commit()
+            return user_id
+        else:
+            cursor = conn.execute(
+                """INSERT INTO users (username, password_hash, google_id, email, display_name, avatar_url, last_login)
+                VALUES (?, '', ?, ?, ?, ?, CURRENT_TIMESTAMP)""",
+                (username, google_id, clean_email, display_name, avatar_url)
+            )
+            conn.commit()
+            return cursor.lastrowid
+
+# --- Google OAuth Tokens ---
+
+def save_google_tokens(user_id: int, encrypted_refresh_token: str, access_token: str = "", expires_at_iso: str = ""):
+    """Save or update OAuth refresh and access tokens."""
+    with get_db_connection() as conn:
+        conn.execute("""
+            INSERT INTO google_tokens (id, user_id, encrypted_refresh_token, access_token, access_token_expires_at, updated_at)
+            VALUES (1, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(id) DO UPDATE SET
+                user_id = excluded.user_id,
+                encrypted_refresh_token = CASE WHEN excluded.encrypted_refresh_token != '' THEN excluded.encrypted_refresh_token ELSE google_tokens.encrypted_refresh_token END,
+                access_token = excluded.access_token,
+                access_token_expires_at = excluded.access_token_expires_at,
+                updated_at = CURRENT_TIMESTAMP
+        """, (user_id, encrypted_refresh_token, access_token, expires_at_iso))
+        conn.commit()
+
+def get_google_tokens() -> Optional[Dict[str, Any]]:
+    """Retrieve stored Google OAuth tokens."""
+    with get_db_connection() as conn:
+        row = conn.execute("SELECT * FROM google_tokens WHERE id = 1").fetchone()
+        return dict(row) if row else None
+
+def update_google_access_token(access_token: str, expires_at_iso: str):
+    """Update short-lived access token and expiry."""
+    with get_db_connection() as conn:
+        conn.execute(
+            "UPDATE google_tokens SET access_token = ?, access_token_expires_at = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 1",
+            (access_token, expires_at_iso)
+        )
+        conn.commit()
+
+def delete_google_tokens():
+    """Clear Google OAuth tokens on disconnect."""
+    with get_db_connection() as conn:
+        conn.execute("DELETE FROM google_tokens WHERE id = 1")
+        conn.commit()
+
+# --- OAuth 2.0 Credentials Config ---
+
+def save_oauth_config(client_id: str, client_secret: str, redirect_uri: str = ""):
+    with get_db_connection() as conn:
+        conn.execute("""
+            INSERT INTO oauth_config (id, client_id, client_secret, redirect_uri, updated_at)
+            VALUES (1, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(id) DO UPDATE SET
+                client_id = excluded.client_id,
+                client_secret = excluded.client_secret,
+                redirect_uri = excluded.redirect_uri,
+                updated_at = CURRENT_TIMESTAMP
+        """, (client_id.strip(), client_secret.strip(), redirect_uri.strip()))
+        conn.commit()
+
+def get_oauth_config() -> Optional[Dict[str, Any]]:
+    with get_db_connection() as conn:
+        row = conn.execute("SELECT * FROM oauth_config WHERE id = 1").fetchone()
+        return dict(row) if row else None
+
+def get_effective_oauth_config() -> Dict[str, str]:
+    """Retrieve Google OAuth credentials from environment or SQLite store."""
+    client_id = config.GOOGLE_CLIENT_ID or ""
+    client_secret = config.GOOGLE_CLIENT_SECRET or ""
+    redirect_uri = config.GOOGLE_REDIRECT_URI or ""
+
+    if not client_id or not client_secret:
+        db_cfg = get_oauth_config()
+        if db_cfg:
+            client_id = client_id or db_cfg.get("client_id", "")
+            client_secret = client_secret or db_cfg.get("client_secret", "")
+            redirect_uri = redirect_uri or db_cfg.get("redirect_uri", "")
+
+    return {
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "redirect_uri": redirect_uri
+    }
 
 def update_user_last_login(user_id: int):
     with get_db_connection() as conn:

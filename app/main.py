@@ -1,11 +1,15 @@
 from fastapi import FastAPI, Depends, HTTPException, Request, Response, status
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr, Field
 from typing import Optional, Dict, Any, List
 from contextlib import asynccontextmanager
 from pathlib import Path
+from datetime import datetime, timezone, timedelta
+import secrets
+import urllib.parse
+import httpx
 
 from app.database import (
     init_db,
@@ -21,7 +25,14 @@ from app.database import (
     get_sent_emails,
     get_sent_email_by_id,
     purge_messages,
-    get_stats
+    get_stats,
+    upsert_google_user,
+    save_google_tokens,
+    get_google_tokens,
+    delete_google_tokens,
+    save_oauth_config,
+    get_oauth_config,
+    get_effective_oauth_config
 )
 from app.crypto_utils import hash_password, verify_password, encrypt_credential, decrypt_credential, normalize_passcode
 from app.auth import (
@@ -109,6 +120,11 @@ class SendEmailRequest(BaseModel):
 class PurgeRequest(BaseModel):
     target: str = Field(..., pattern="^(sent|received|all)$")
 
+class OAuthConfigRequest(BaseModel):
+    client_id: str
+    client_secret: str
+    redirect_uri: Optional[str] = ""
+
 # --- Web UI Routes ---
 
 @app.get("/", response_class=HTMLResponse)
@@ -125,17 +141,25 @@ async def auth_status(request: Request):
     user_count = get_user_count()
     current_user = get_current_user_optional(request)
     cfg = get_email_config()
+    oauth_cfg = get_effective_oauth_config()
+    google_tokens = get_google_tokens()
+    has_oauth_tokens = bool(google_tokens and google_tokens.get("encrypted_refresh_token"))
+
     return {
         "app_name": "LazyMail",
         "app_version": APP_VERSION,
         "app_author": APP_AUTHOR,
         "app_author_alias": APP_AUTHOR_ALIAS,
         "app_author_url": APP_AUTHOR_URL,
-        "setup_required": user_count == 0,
+        "setup_required": user_count == 0 and not has_oauth_tokens,
         "logged_in": current_user is not None,
         "username": current_user["username"] if current_user else None,
-        "has_email_config": cfg is not None and bool(cfg.get("email_address")),
-        "configured_email": cfg.get("email_address") if cfg else None
+        "display_name": current_user.get("display_name") if current_user else None,
+        "avatar_url": current_user.get("avatar_url") if current_user else None,
+        "has_email_config": (cfg is not None and bool(cfg.get("email_address"))) or has_oauth_tokens,
+        "configured_email": cfg.get("email_address") if cfg else (current_user.get("email") if current_user else None),
+        "oauth_configured": bool(oauth_cfg["client_id"] and oauth_cfg["client_secret"]),
+        "is_google_authenticated": has_oauth_tokens
     }
 
 @app.post("/api/auth/setup")
@@ -218,6 +242,163 @@ async def logout(request: Request, response: Response):
         delete_session(token)
     response.delete_cookie(key="lazymail_session", path="/")
     return {"message": "Logged out successfully"}
+
+# --- Google OAuth 2.0 APIs ---
+
+@app.get("/api/auth/google/config")
+async def get_google_oauth_config_endpoint():
+    cfg = get_effective_oauth_config()
+    return {
+        "is_configured": bool(cfg["client_id"] and cfg["client_secret"]),
+        "client_id": cfg["client_id"],
+        "redirect_uri": cfg["redirect_uri"]
+    }
+
+@app.post("/api/auth/google/config")
+async def save_google_oauth_config_endpoint(req: OAuthConfigRequest, request: Request):
+    save_oauth_config(req.client_id, req.client_secret, req.redirect_uri or "")
+    return {"message": "Google OAuth configuration saved successfully."}
+
+@app.get("/api/auth/google/login")
+async def google_login(request: Request):
+    cfg = get_effective_oauth_config()
+    client_id = cfg["client_id"]
+    if not client_id:
+        return RedirectResponse(url="/?error=oauth_not_configured")
+
+    redirect_uri = cfg["redirect_uri"]
+    if not redirect_uri:
+        proto = request.headers.get("x-forwarded-proto") or request.url.scheme
+        host = request.headers.get("x-forwarded-host") or request.url.netloc
+        redirect_uri = f"{proto}://{host}/api/auth/google/callback"
+
+    state = secrets.token_urlsafe(32)
+    scopes = (
+        "openid "
+        "https://www.googleapis.com/auth/userinfo.email "
+        "https://www.googleapis.com/auth/userinfo.profile "
+        "https://www.googleapis.com/auth/gmail.send "
+        "https://www.googleapis.com/auth/gmail.readonly"
+    )
+
+    params = {
+        "client_id": client_id,
+        "redirect_uri": redirect_uri,
+        "response_type": "code",
+        "scope": scopes,
+        "access_type": "offline",
+        "prompt": "consent",
+        "state": state
+    }
+    auth_url = f"https://accounts.google.com/o/oauth2/v2/auth?{urllib.parse.urlencode(params)}"
+
+    response = RedirectResponse(url=auth_url, status_code=303)
+    response.set_cookie(
+        key="lazymail_oauth_state",
+        value=state,
+        httponly=True,
+        samesite="lax",
+        max_age=600,
+        path="/"
+    )
+    return response
+
+@app.get("/api/auth/google/callback")
+async def google_callback(request: Request, code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None):
+    if error:
+        return RedirectResponse(url=f"/?error={urllib.parse.quote(error)}")
+
+    stored_state = request.cookies.get("lazymail_oauth_state")
+    if not state or not stored_state or state != stored_state:
+        return RedirectResponse(url="/?error=invalid_state")
+
+    if not code:
+        return RedirectResponse(url="/?error=missing_code")
+
+    cfg = get_effective_oauth_config()
+    client_id = cfg["client_id"]
+    client_secret = cfg["client_secret"]
+    redirect_uri = cfg["redirect_uri"]
+    if not redirect_uri:
+        proto = request.headers.get("x-forwarded-proto") or request.url.scheme
+        host = request.headers.get("x-forwarded-host") or request.url.netloc
+        redirect_uri = f"{proto}://{host}/api/auth/google/callback"
+
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        # 1. Exchange authorization code for tokens
+        token_resp = await client.post(
+            "https://oauth2.googleapis.com/token",
+            data={
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "code": code,
+                "grant_type": "authorization_code",
+                "redirect_uri": redirect_uri
+            }
+        )
+        if token_resp.status_code != 200:
+            return RedirectResponse(url="/?error=token_exchange_failed")
+
+        token_data = token_resp.json()
+        access_token = token_data.get("access_token", "")
+        refresh_token = token_data.get("refresh_token", "")
+        expires_in = int(token_data.get("expires_in", 3600))
+        expires_at_iso = (datetime.now(timezone.utc) + timedelta(seconds=expires_in)).isoformat()
+
+        # 2. Fetch user profile from Google UserInfo endpoint
+        userinfo_resp = await client.get(
+            "https://www.googleapis.com/oauth2/v3/userinfo",
+            headers={"Authorization": f"Bearer {access_token}"}
+        )
+        if userinfo_resp.status_code != 200:
+            return RedirectResponse(url="/?error=userinfo_failed")
+
+        userinfo = userinfo_resp.json()
+        google_id = userinfo.get("sub", "")
+        email_addr = userinfo.get("email", "")
+        display_name = userinfo.get("name") or email_addr.split("@")[0]
+        avatar_url = userinfo.get("picture", "")
+
+        # 3. Upsert user in database
+        user_id = upsert_google_user(google_id, email_addr, display_name, avatar_url)
+
+        # 4. Encrypt and save refresh token if provided
+        encrypted_rt = encrypt_credential(refresh_token) if refresh_token else ""
+        save_google_tokens(user_id, encrypted_rt, access_token, expires_at_iso)
+
+        # 5. Automatically populate active email_address and sender_name in email_config
+        existing_cfg = get_email_config()
+        enc_pw = existing_cfg.get("encrypted_password") if existing_cfg else ""
+        save_email_config(
+            email_address=email_addr,
+            encrypted_password=enc_pw or encrypt_credential("oauth_managed"),
+            sender_name=display_name,
+            imap_host="imap.gmail.com",
+            imap_port=993,
+            imap_use_ssl=1,
+            smtp_host="smtp.gmail.com",
+            smtp_port=465,
+            smtp_use_ssl=1
+        )
+
+        # 6. Issue user session cookie
+        session_token = create_user_session(user_id)
+        redirect = RedirectResponse(url="/", status_code=303)
+        redirect.set_cookie(
+            key="lazymail_session",
+            value=session_token,
+            httponly=True,
+            samesite="lax",
+            max_age=86400,
+            path="/"
+        )
+        redirect.delete_cookie(key="lazymail_oauth_state", path="/")
+        return redirect
+
+@app.post("/api/auth/google/disconnect")
+async def google_disconnect(user: dict = Depends(get_current_user)):
+    delete_google_tokens()
+    return {"success": True, "message": "Google Account disconnected successfully."}
 
 # --- Settings & Email Configuration APIs ---
 

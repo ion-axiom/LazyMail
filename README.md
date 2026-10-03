@@ -113,9 +113,13 @@ Open your browser to:
 http://127.0.0.1:8000
 ```
 
-1. **One-Step Account & Gmail Setup**: On your first visit, enter your **Gmail username prefix** (e.g. `harrypotter12345` for `harrypotter12345@gmail.com`) and your **16-character Google App Passcode** (e.g. `abcd efgh ijkl mnop`).
-2. **Auto-Populated Mailbox**: The app creates your login account AND auto-configures your Gmail IMAP/SMTP connection details in SQLite in one click!
-3. **Sync Inbox**: Click **Sync IMAP** on the inbox toolbar to pull the last 7 days of emails.
+1. **1-Click Google OAuth Sign-In (Recommended)**:
+   - Click the prominent **Sign in with Google** button to authenticate directly with Google OAuth 2.0.
+   - Grants seamless, password-free access with offline refresh tokens. All emails are dispatched and synchronized directly through the official Google Gmail REST API (`gmail.googleapis.com`) without needing IMAP/SMTP app passwords or port configuration.
+   - If configuring custom credentials, enter your **Google Client ID** and **Client Secret** either via the UI modal (**Settings -> Google OAuth Settings**) or in the `.env` file (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`).
+2. **Alternative Username & App Passcode Setup**:
+   - You can also enter a username and your 16-character Google App Passcode to connect via standard IMAP/SMTP.
+3. **Sync Inbox**: Click **Sync IMAP / Sync Google** on the inbox toolbar to pull messages.
 4. **Send Email**: Click **Compose** to draft and send messages.
 5. **Purge Data**: Go to **Purge Database** whenever you wish to clear sent or received messages.
 

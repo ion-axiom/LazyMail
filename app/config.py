@@ -32,8 +32,16 @@ def get_or_create_secret_key() -> bytes:
         pass
     return new_key
 
+from dotenv import load_dotenv
+load_dotenv()
+
 SECRET_KEY = get_or_create_secret_key()
 SESSION_EXPIRE_HOURS = 24
 MAX_SENT_EMAILS = 50
 MAX_INBOX_EMAILS = 50
 INBOX_DAYS_LIMIT = 7
+
+# Google OAuth 2.0 & Gmail API Settings
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
+GOOGLE_REDIRECT_URI = os.environ.get("GOOGLE_REDIRECT_URI", "")

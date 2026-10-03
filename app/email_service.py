@@ -3,6 +3,8 @@ import smtplib
 import ssl
 import socket
 import email
+import base64
+import httpx
 from email.header import decode_header, Header
 from email.utils import parseaddr, parsedate_to_datetime, formataddr, make_msgid
 from email.mime.text import MIMEText
@@ -16,7 +18,10 @@ from app.database import (
     get_email_config,
     upsert_received_email,
     prune_received_emails,
-    save_sent_email
+    save_sent_email,
+    get_google_tokens,
+    update_google_access_token,
+    get_effective_oauth_config
 )
 from app.crypto_utils import decrypt_credential
 from app.config import MAX_INBOX_EMAILS, INBOX_DAYS_LIMIT
@@ -277,12 +282,198 @@ def test_credentials(
     results["success"] = results["imap_ok"] and results["smtp_ok"]
     return results
 
+def get_valid_google_access_token() -> Optional[str]:
+    """
+    Retrieve a valid Google OAuth 2.0 access token.
+    Automatically refreshes the token using the stored refresh token if expired.
+    """
+    tokens = get_google_tokens()
+    if not tokens or not tokens.get("encrypted_refresh_token"):
+        return None
+
+    access_token = tokens.get("access_token")
+    expires_at_str = tokens.get("access_token_expires_at")
+
+    if access_token and expires_at_str:
+        try:
+            expires_at = datetime.fromisoformat(expires_at_str)
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+            if expires_at > datetime.now(timezone.utc) + timedelta(seconds=60):
+                return access_token
+        except Exception:
+            pass
+
+    raw_refresh_token = decrypt_credential(tokens["encrypted_refresh_token"])
+    if not raw_refresh_token:
+        raise ValueError("Failed to decrypt stored Google refresh token.")
+
+    oauth_cfg = get_effective_oauth_config()
+    client_id = oauth_cfg["client_id"]
+    client_secret = oauth_cfg["client_secret"]
+    if not client_id or not client_secret:
+        raise ValueError("Google OAuth Client credentials are not configured.")
+
+    try:
+        resp = httpx.post(
+            "https://oauth2.googleapis.com/token",
+            data={
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "refresh_token": raw_refresh_token,
+                "grant_type": "refresh_token"
+            },
+            timeout=15.0
+        )
+        if resp.status_code != 200:
+            error_data = resp.json() if "application/json" in resp.headers.get("content-type", "") else {}
+            err_msg = error_data.get("error_description") or error_data.get("error") or resp.text
+            raise RuntimeError(f"Google Token Refresh Failed ({resp.status_code}): {err_msg}")
+
+        data = resp.json()
+        new_access_token = data["access_token"]
+        expires_in = int(data.get("expires_in", 3600))
+        expires_at = (datetime.now(timezone.utc) + timedelta(seconds=expires_in)).isoformat()
+
+        update_google_access_token(new_access_token, expires_at)
+        return new_access_token
+    except Exception as e:
+        if isinstance(e, (RuntimeError, ValueError)):
+            raise
+        raise RuntimeError(f"Failed to refresh Google access token: {e}") from e
+
+def _send_via_gmail_api(msg: MIMEMultipart, recipient: str) -> None:
+    access_token = get_valid_google_access_token()
+    if not access_token:
+        raise RuntimeError("No valid Google access token available. Please sign in with Google.")
+
+    raw_bytes = msg.as_bytes()
+    raw_b64 = base64.urlsafe_b64encode(raw_bytes).decode("utf-8")
+
+    try:
+        resp = httpx.post(
+            "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "Content-Type": "application/json"
+            },
+            json={"raw": raw_b64},
+            timeout=25.0
+        )
+        if resp.status_code != 200:
+            err_data = resp.json() if "application/json" in resp.headers.get("content-type", "") else {}
+            err_msg = err_data.get("error", {}).get("message") or resp.text
+            raise RuntimeError(f"Gmail API Send Error ({resp.status_code}): {err_msg}")
+    except Exception as e:
+        if isinstance(e, RuntimeError):
+            raise
+        raise RuntimeError(f"Failed to send email via Gmail API: {e}") from e
+
+def _sync_inbox_via_gmail_api(days: int = INBOX_DAYS_LIMIT, max_emails: int = MAX_INBOX_EMAILS) -> Dict[str, Any]:
+    access_token = get_valid_google_access_token()
+    if not access_token:
+        raise RuntimeError("No valid Google access token available. Please sign in with Google.")
+
+    query = f"newer_than:{days}d"
+    try:
+        resp = httpx.get(
+            "https://gmail.googleapis.com/gmail/v1/users/me/messages",
+            headers={"Authorization": f"Bearer {access_token}"},
+            params={"maxResults": max_emails, "q": query},
+            timeout=25.0
+        )
+        if resp.status_code != 200:
+            err_data = resp.json() if "application/json" in resp.headers.get("content-type", "") else {}
+            err_msg = err_data.get("error", {}).get("message") or resp.text
+            raise RuntimeError(f"Gmail API Inbox Error ({resp.status_code}): {err_msg}")
+
+        data = resp.json()
+        messages_meta = data.get("messages", [])
+        fetched_count = 0
+
+        for item in messages_meta:
+            msg_id = item["id"]
+            try:
+                detail_resp = httpx.get(
+                    f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{msg_id}",
+                    headers={"Authorization": f"Bearer {access_token}"},
+                    params={"format": "raw"},
+                    timeout=15.0
+                )
+                if detail_resp.status_code != 200:
+                    continue
+
+                raw_encoded = detail_resp.json().get("raw", "")
+                if not raw_encoded:
+                    continue
+
+                raw_bytes = base64.urlsafe_b64decode(raw_encoded + "=" * (-len(raw_encoded) % 4))
+                msg = email.message_from_bytes(raw_bytes)
+
+                message_id = msg.get("Message-ID", f"gmail-{msg_id}")
+                subject = decode_header_str(msg.get("Subject", "(No Subject)"))
+                from_header = decode_header_str(msg.get("From", "Unknown Sender"))
+                to_header = decode_header_str(msg.get("To", ""))
+
+                sender_name, sender_email = parseaddr(from_header)
+                if not sender_name:
+                    sender_name = sender_email or from_header
+
+                date_header = msg.get("Date")
+                received_iso = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+                if date_header:
+                    try:
+                        parsed_dt = parsedate_to_datetime(date_header)
+                        if parsed_dt.tzinfo is None:
+                            parsed_dt = parsed_dt.replace(tzinfo=timezone.utc)
+                        else:
+                            parsed_dt = parsed_dt.astimezone(timezone.utc)
+                        received_iso = parsed_dt.strftime("%Y-%m-%d %H:%M:%S")
+                    except Exception:
+                        pass
+
+                body_plain, body_html = extract_body(msg)
+                snippet = clean_snippet(body_plain or body_html)
+
+                email_record = {
+                    "message_id": message_id,
+                    "sender": sender_name,
+                    "sender_email": sender_email,
+                    "recipient": to_header,
+                    "subject": subject,
+                    "snippet": snippet,
+                    "body_plain": body_plain,
+                    "body_html": body_html,
+                    "received_at": received_iso
+                }
+
+                upsert_received_email(email_record)
+                fetched_count += 1
+            except Exception:
+                continue
+
+        prune_received_emails(max_emails)
+        return {
+            "status": "success",
+            "fetched_count": fetched_count,
+            "days_window": days,
+            "max_emails_limit": max_emails,
+            "source": "gmail_api"
+        }
+    except Exception as e:
+        if isinstance(e, RuntimeError):
+            raise
+        raise RuntimeError(f"Failed to sync inbox via Gmail API: {e}") from e
+
 def sync_inbox_from_imap(days: int = INBOX_DAYS_LIMIT, max_emails: int = MAX_INBOX_EMAILS) -> Dict[str, Any]:
     """
-    Connect to IMAP, query emails from the last `days` (default 7),
-    fetch up to `max_emails` (default 50) sorted newest first,
-    and persist into SQLite received_emails.
+    Synchronize inbox emails. Uses Gmail REST API when Google OAuth is connected,
+    or falls back to IMAP for password/app-password configurations.
     """
+    google_tokens = get_google_tokens()
+    if google_tokens and google_tokens.get("encrypted_refresh_token"):
+        return _sync_inbox_via_gmail_api(days=days, max_emails=max_emails)
+
     config = get_email_config()
     if not config or not config.get("email_address") or not config.get("encrypted_password"):
         raise ValueError("Email account is not configured yet. Please configure Gmail details in Settings.")
@@ -417,16 +608,22 @@ def send_outgoing_email(recipient: str, subject: str, body: str) -> Dict[str, An
 
     recipient = validate_single_recipient(recipient)
 
+    # Check if Google OAuth 2.0 is active
+    google_tokens = get_google_tokens()
+    has_oauth = bool(google_tokens and google_tokens.get("encrypted_refresh_token"))
+
     config = get_email_config()
-    if not config or not config.get("email_address") or not config.get("encrypted_password"):
-        raise ValueError("Email settings are not configured. Please configure your Gmail account.")
+    sender_email = (config.get("email_address") if config else "") or "me"
+    sender_name = (config.get("sender_name") if config else "") or ""
+    raw_password = ""
 
-    raw_password = decrypt_credential(config["encrypted_password"])
-    if not raw_password:
-        raise ValueError("Failed to decrypt stored credentials.")
+    if not has_oauth:
+        if not config or not config.get("email_address") or not config.get("encrypted_password"):
+            raise ValueError("Email settings are not configured. Please sign in with Google or configure Gmail account.")
 
-    sender_email = config["email_address"]
-    sender_name = (config.get("sender_name") or "").strip()
+        raw_password = decrypt_credential(config["encrypted_password"])
+        if not raw_password:
+            raise ValueError("Failed to decrypt stored credentials.")
     
     # Properly encode sender display name to RFC-2047 if present
     if sender_name:
@@ -457,6 +654,17 @@ def send_outgoing_email(recipient: str, subject: str, body: str) -> Dict[str, An
     html_formatted = "<p>" + html.escape(body).replace("\n\n", "</p><p>").replace("\n", "<br>") + "</p>"
     part_html = MIMEText(f"<html><body>{html_formatted}</body></html>", "html", "utf-8")
     msg.attach(part_html)
+
+    if has_oauth:
+        _send_via_gmail_api(msg, recipient)
+        sent_id = save_sent_email(recipient.strip(), subject, body)
+        return {
+            "id": sent_id,
+            "recipient": recipient.strip(),
+            "subject": subject,
+            "sent_at": datetime.utcnow().isoformat(),
+            "status": "sent"
+        }
 
     smtp_host = config.get("smtp_host", "smtp.gmail.com")
     smtp_port = int(config.get("smtp_port", 465))

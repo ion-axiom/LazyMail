@@ -35,6 +35,22 @@
         <p id="auth-subtitle" data-i18n="setup_subtitle">Gmail kullanıcı adı ön ekinizi ve 16 haneli Uygulama Şifrenizi girin</p>
       </div>
 
+      <!-- Google 1-Click Sign-in Section -->
+      <div id="google-auth-section" class="google-auth-section">
+        <a href="/api/auth/google/login" id="btn-google-login" class="btn btn-google btn-block">
+          <svg class="google-icon" width="20" height="20" viewBox="0 0 24 24">
+            <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.66v3.04h3.88c2.27-2.09 3.66-5.17 3.66-9.14z"/>
+            <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.04c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.27v3.13C3.25 21.31 7.31 24 12 24z"/>
+            <path fill="#FBBC05" d="M5.28 14.28c-.25-.72-.38-1.49-.38-2.28s.13-1.56.38-2.28V6.59H1.27C.46 8.2 0 10.04 0 12s.46 3.8 1.27 5.41l4.01-3.13z"/>
+            <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.25 2.69 1.27 6.59l4.01 3.13c.95-2.83 3.6-4.97 6.72-4.97z"/>
+          </svg>
+          <span data-i18n="btn_signin_google">Google ile Giriş Yap</span>
+        </a>
+        <div class="auth-divider">
+          <span data-i18n="or_divider">veya</span>
+        </div>
+      </div>
+
       <!-- Setup Form (First Run) -->
       <form id="setup-form" class="auth-form hidden">
         <div class="alert-info">
@@ -311,7 +327,30 @@
             </div>
 
             <!-- Gmail Instructions Tip Box -->
-            <div class="info-banner">
+            <!-- Google OAuth Connected Status Card -->
+            <div id="google-connected-card" class="oauth-status-card hidden">
+              <div class="oauth-card-header">
+                <div class="oauth-user-badge">
+                  <img id="oauth-user-avatar" class="oauth-avatar" src="" alt="Google Avatar" style="display:none;">
+                  <div class="oauth-user-info">
+                    <strong id="oauth-user-name">Google User</strong>
+                    <span id="oauth-user-email">user@gmail.com</span>
+                  </div>
+                </div>
+                <span class="badge-success" data-i18n="badge_google_connected">Google OAuth 2.0 ile Bağlı</span>
+              </div>
+              <p class="helper-text" data-i18n="google_oauth_active_desc">E-postalarınız güvenli Google REST API üzerinden doğrudan iletilir ve senkronize edilir. Şifre veya port yapılandırması gerekmez.</p>
+              <div class="oauth-card-actions">
+                <a href="/api/auth/google/login" class="btn btn-secondary btn-sm">
+                  <span data-i18n="btn_reconnect_google">Hesabı Yeniden Bağla</span>
+                </a>
+                <button type="button" id="btn-disconnect-google" class="btn btn-outline-danger btn-sm">
+                  <span data-i18n="btn_disconnect_google">Google Bağlantısını Kes</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="info-banner" id="settings-app-password-banner">
               <div class="info-icon">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>
               </div>
@@ -378,9 +417,11 @@
                   <span class="btn-spinner hidden"></span>
                 </button>
               </div>
-            </form>
-
             <div id="test-connection-result" class="test-result-box hidden"></div>
+
+            <div style="text-align: center; margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--border-color);">
+              <a href="javascript:void(0)" id="btn-open-oauth-modal" class="oauth-config-modal-link" data-i18n="btn_oauth_settings">Google OAuth İstemci Ayarları</a>
+            </div>
           </div>
         </div>
 
@@ -480,6 +521,33 @@
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" x2="11" y1="2" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
               <span data-i18n="btn_send">Mesajı Gönder</span>
             </span>
+            <span class="btn-spinner hidden"></span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- OAUTH CONFIG MODAL -->
+  <div id="modal-oauth-config" class="modal-overlay hidden">
+    <div class="confirm-card" style="max-width: 520px; text-align: left;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
+        <h3 data-i18n="btn_oauth_settings" style="margin: 0; font-size: 1.15rem;">Google OAuth İstemci Ayarları</h3>
+        <button type="button" id="btn-close-oauth-modal" class="btn-icon" style="font-size: 1.25rem;">&times;</button>
+      </div>
+      <form id="form-oauth-config" style="display: flex; flex-direction: column; gap: 1rem;">
+        <div class="form-group">
+          <label for="oauth-client-id" data-i18n="label_google_client_id">Google Client ID</label>
+          <input type="text" id="oauth-client-id" placeholder="xxxx.apps.googleusercontent.com" data-i18n-placeholder="placeholder_google_client_id" required>
+        </div>
+        <div class="form-group">
+          <label for="oauth-client-secret" data-i18n="label_google_client_secret">Google Client Secret</label>
+          <input type="password" id="oauth-client-secret" placeholder="GOCSPX-xxxx" data-i18n-placeholder="placeholder_google_client_secret" required>
+        </div>
+        <div style="display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 0.5rem;">
+          <button type="button" id="btn-cancel-oauth-modal" class="btn btn-secondary" data-i18n="btn_cancel">Vazgeç</button>
+          <button type="submit" class="btn btn-primary" id="btn-submit-oauth">
+            <span class="btn-text" data-i18n="btn_save_oauth_config">OAuth Bilgilerini Kaydet</span>
             <span class="btn-spinner hidden"></span>
           </button>
         </div>
