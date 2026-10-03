@@ -230,3 +230,4 @@ Whenever you push changes to the `main` branch on GitHub:
 2. If tests pass, GitHub Actions connects via SSH to your Ionos VPS.
 3. It pulls the latest code, ensures `./data` persistence, updates the Docker container with `docker compose up -d --build`, and confirms port `3011` is healthy.
 
+Thank you
