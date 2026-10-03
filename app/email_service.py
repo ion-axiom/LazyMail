@@ -1,6 +1,7 @@
 import imaplib
 import smtplib
 import ssl
+import socket
 import email
 from email.header import decode_header, Header
 from email.utils import parseaddr, parsedate_to_datetime, formataddr, make_msgid
@@ -136,6 +137,82 @@ def get_imap_connection(config: Dict[str, Any], timeout: int = 15) -> imaplib.IM
         client = imaplib.IMAP4(host, port)
     return client
 
+def _create_smtp_connection(
+    smtp_host: str,
+    smtp_port: int,
+    smtp_use_ssl: bool,
+    timeout: int = 20
+) -> smtplib.SMTP:
+    """
+    Connect to SMTP server with automatic fallback between port 465 (SSL) and port 587 (STARTTLS)
+    for Gmail to ensure maximum connectivity resilience.
+    """
+    primary_is_ssl = (smtp_use_ssl and smtp_port == 465)
+    try:
+        if primary_is_ssl:
+            context = ssl.create_default_context()
+            return smtplib.SMTP_SSL(smtp_host, smtp_port, context=context, timeout=timeout)
+        else:
+            server = smtplib.SMTP(smtp_host, smtp_port, timeout=timeout)
+            if smtp_use_ssl:
+                context = ssl.create_default_context()
+                server.starttls(context=context)
+            return server
+    except (socket.error, OSError, smtplib.SMTPConnectError, TimeoutError) as conn_err:
+        # Fallback between Gmail's ports (465 SSL <-> 587 STARTTLS) if primary connection fails
+        if "gmail.com" in smtp_host.lower():
+            fallback_port = 587 if smtp_port == 465 else 465
+            try:
+                if fallback_port == 465:
+                    context = ssl.create_default_context()
+                    return smtplib.SMTP_SSL(smtp_host, fallback_port, context=context, timeout=timeout)
+                else:
+                    fallback_server = smtplib.SMTP(smtp_host, fallback_port, timeout=timeout)
+                    context = ssl.create_default_context()
+                    fallback_server.starttls(context=context)
+                    return fallback_server
+            except Exception:
+                pass
+        raise conn_err
+
+def _perform_smtp_login(server: smtplib.SMTP, email_address: str, raw_password: str) -> None:
+    """
+    Authenticate against SMTP server with comprehensive handling for Gmail 535 Bad Credentials
+    and unexpected connection drops caused by rejected credentials.
+    """
+    try:
+        server.login(email_address, raw_password)
+    except smtplib.SMTPAuthenticationError as auth_err:
+        raise RuntimeError(
+            "Gmail Authentication Failed (535 Bad Credentials): Google rejected your username or App Password. "
+            "Please make sure 2-Step Verification is active on your Google Account, generate a fresh 16-character "
+            "App Password at https://myaccount.google.com/apppasswords, and update Settings."
+        ) from auth_err
+    except smtplib.SMTPServerDisconnected as disc_err:
+        # Google drops the TCP socket immediately upon receiving invalid credentials.
+        # Python's smtplib catches the 535 and tries fallback auth methods over the closed socket,
+        # raising SMTPServerDisconnected('Connection unexpectedly closed').
+        raise RuntimeError(
+            "Gmail Authentication Failed (535 Bad Credentials): Google closed the connection during login. "
+            "This happens when Google rejects your credentials or the App Password was revoked. "
+            "Please verify 2-Step Verification is enabled and generate a fresh 16-character App Password at "
+            "https://myaccount.google.com/apppasswords, then update Settings."
+        ) from disc_err
+    except Exception as login_err:
+        err_str = str(login_err)
+        if (
+            "535" in err_str
+            or "BadCredentials" in err_str
+            or "Username and Password not accepted" in err_str
+            or "Application-specific password required" in err_str
+            or "AUTHENTICATIONFAILED" in err_str
+        ):
+            raise RuntimeError(
+                "Gmail Authentication Failed (535 Bad Credentials): Google rejected your username or App Password. "
+                "Please generate a fresh 16-character App Password at https://myaccount.google.com/apppasswords and update Settings."
+            ) from login_err
+        raise RuntimeError(f"SMTP Login Failed: {err_str}") from login_err
+
 def test_credentials(
     email_address: str,
     raw_password: str,
@@ -163,44 +240,39 @@ def test_credentials(
             "imap_use_ssl": imap_use_ssl
         }
         imap_client = get_imap_connection(config, timeout=12)
-        imap_client.login(email_address, raw_password)
+        try:
+            imap_client.login(email_address, raw_password)
+        except Exception as imap_login_err:
+            err = str(imap_login_err)
+            if "Application-specific password required" in err or "AUTHENTICATIONFAILED" in err or "Invalid credentials" in err:
+                results["imap_message"] = (
+                    "Authentication failed: Google rejected your username or App Password. "
+                    "Ensure 2-Step Verification is enabled on your Google Account and generate a fresh 16-character "
+                    "App Password at https://myaccount.google.com/apppasswords."
+                )
+            else:
+                results["imap_message"] = f"IMAP Authentication Error: {err}"
+            raise
         imap_client.select("INBOX", readonly=True)
         imap_client.logout()
         results["imap_ok"] = True
         results["imap_message"] = "IMAP connection and login succeeded."
     except Exception as e:
-        err = str(e)
-        if "Application-specific password required" in err or "AUTHENTICATIONFAILED" in err:
-            results["imap_message"] = (
-                "Authentication failed: Gmail requires a 16-character App Password. "
-                "Ensure 2-Step Verification is enabled on your Google Account and generate an App Password."
-            )
-        else:
-            results["imap_message"] = f"IMAP Error: {err}"
+        if not results["imap_message"]:
+            results["imap_message"] = f"IMAP Error: {e}"
 
     # 2. Test SMTP
     try:
-        if smtp_use_ssl and smtp_port == 465:
-            context = ssl.create_default_context()
-            with smtplib.SMTP_SSL(smtp_host, smtp_port, context=context, timeout=12) as smtp_client:
-                smtp_client.login(email_address, raw_password)
-        else:
-            with smtplib.SMTP(smtp_host, smtp_port, timeout=12) as smtp_client:
-                if smtp_use_ssl:
-                    context = ssl.create_default_context()
-                    smtp_client.starttls(context=context)
-                smtp_client.login(email_address, raw_password)
-        results["smtp_ok"] = True
-        results["smtp_message"] = "SMTP connection and login succeeded."
+        with _create_smtp_connection(smtp_host, smtp_port, bool(smtp_use_ssl), timeout=12) as smtp_client:
+            try:
+                _perform_smtp_login(smtp_client, email_address, raw_password)
+                results["smtp_ok"] = True
+                results["smtp_message"] = "SMTP connection and login succeeded."
+            except RuntimeError as auth_e:
+                results["smtp_message"] = str(auth_e)
     except Exception as e:
-        err = str(e)
-        if "Application-specific password required" in err or "535" in err or "Authentication" in err:
-            results["smtp_message"] = (
-                "Authentication failed: Gmail requires an App Password. "
-                "Ensure 2-Step Verification is enabled and use your 16-character App Password."
-            )
-        else:
-            results["smtp_message"] = f"SMTP Error: {err}"
+        if not results["smtp_message"]:
+            results["smtp_message"] = f"SMTP Connection Error: {e}"
 
     results["success"] = results["imap_ok"] and results["smtp_ok"]
     return results
@@ -224,7 +296,21 @@ def sync_inbox_from_imap(days: int = INBOX_DAYS_LIMIT, max_emails: int = MAX_INB
     new_count = 0
 
     try:
-        imap_client.login(config["email_address"], raw_password)
+        try:
+            imap_client.login(config["email_address"], raw_password)
+        except Exception as auth_err:
+            err_str = str(auth_err)
+            if (
+                "AUTHENTICATIONFAILED" in err_str
+                or "Invalid credentials" in err_str
+                or "Application-specific password" in err_str
+            ):
+                raise RuntimeError(
+                    "Gmail IMAP Authentication Failed: Google rejected your username or App Password. "
+                    "Please make sure 2-Step Verification is active and generate a fresh 16-character "
+                    "App Password at https://myaccount.google.com/apppasswords, then save it in Settings."
+                ) from auth_err
+            raise RuntimeError(f"IMAP Login Failed: {err_str}") from auth_err
         status, _ = imap_client.select("INBOX", readonly=True)
         if status != "OK":
             raise RuntimeError("Could not open INBOX folder on IMAP server.")
@@ -377,30 +463,32 @@ def send_outgoing_email(recipient: str, subject: str, body: str) -> Dict[str, An
     smtp_use_ssl = bool(config.get("smtp_use_ssl", 1))
 
     try:
-        if smtp_use_ssl and smtp_port == 465:
-            context = ssl.create_default_context()
-            with smtplib.SMTP_SSL(smtp_host, smtp_port, context=context, timeout=20) as server:
-                server.login(sender_email, raw_password)
+        server = _create_smtp_connection(smtp_host, smtp_port, smtp_use_ssl, timeout=20)
+    except Exception as conn_err:
+        raise RuntimeError(f"Could not connect to SMTP server ({smtp_host}:{smtp_port}): {conn_err}") from conn_err
+
+    try:
+        with server:
+            # Login with dedicated 535 Bad Credentials diagnostics
+            _perform_smtp_login(server, sender_email, raw_password)
+
+            # Send email message
+            try:
                 server.send_message(msg, from_addr=sender_email, to_addrs=[recipient])
-        else:
-            with smtplib.SMTP(smtp_host, smtp_port, timeout=20) as server:
-                if smtp_use_ssl:
-                    context = ssl.create_default_context()
-                    server.starttls(context=context)
-                server.login(sender_email, raw_password)
-                server.send_message(msg, from_addr=sender_email, to_addrs=[recipient])
+            except Exception as send_err:
+                err = str(send_err)
+                if "5.7.30" in err or "DKIM" in err:
+                    raise RuntimeError(
+                        "Gmail DKIM Authentication Failed (550 5.7.30): "
+                        "Gmail blocked this message because DKIM authentication did not pass for your sending domain. "
+                        "If you are using a Google Workspace custom domain, DKIM must be turned on in the Google Admin Console. "
+                        "If using a personal Gmail account, ensure the sender address in Settings exactly matches your @gmail.com account."
+                    ) from send_err
+                raise RuntimeError(f"Failed to send email via SMTP: {err}") from send_err
+    except RuntimeError:
+        raise
     except Exception as e:
-        err = str(e)
-        if "Application-specific password required" in err or "535" in err:
-            raise RuntimeError("SMTP Authentication Failed: Gmail requires a 16-character App Password.") from e
-        if "5.7.30" in err or "DKIM" in err:
-            raise RuntimeError(
-                "Gmail DKIM Authentication Failed (550 5.7.30): "
-                "Gmail blocked this message because DKIM authentication did not pass for your sending domain. "
-                "If you are using a Google Workspace custom domain, DKIM must be turned on in the Google Admin Console. "
-                "If using a personal Gmail account, ensure the sender address in Settings exactly matches your @gmail.com account."
-            ) from e
-        raise RuntimeError(f"Failed to send email via SMTP: {err}") from e
+        raise RuntimeError(f"Failed to send email via SMTP: {e}") from e
 
     # Persist sent email to SQLite and enforce max 50 sent messages cap
     sent_id = save_sent_email(recipient.strip(), subject, body)
