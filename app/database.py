@@ -4,17 +4,19 @@ from datetime import datetime
 from app import config
 from app.config import MAX_SENT_EMAILS, MAX_INBOX_EMAILS
 
-_initialized_dbs = set()
-
 def get_db_connection() -> sqlite3.Connection:
     db_str = str(config.DB_PATH)
     conn = sqlite3.connect(db_str, timeout=10.0)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA journal_mode = WAL")
-    if db_str not in _initialized_dbs:
+
+    # Verify schema exists on disk, auto-initializing if tables were cleared or recreated
+    has_users = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='users'"
+    ).fetchone()
+    if not has_users:
         _init_schema(conn)
-        _initialized_dbs.add(db_str)
     return conn
 
 def _init_schema(conn: sqlite3.Connection):
