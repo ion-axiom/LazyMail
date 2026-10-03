@@ -23,120 +23,135 @@ const state = {
 };
 
 // --- DOM ELEMENTS CACHE ---
-const elements = {
+const elements = {};
+
+const ELEMENT_ID_MAP = {
   // Auth
-  authModal: document.getElementById('auth-modal'),
-  authTitle: document.getElementById('auth-title'),
-  authSubtitle: document.getElementById('auth-subtitle'),
-  setupForm: document.getElementById('setup-form'),
-  loginForm: document.getElementById('login-form'),
-  setupUsername: document.getElementById('setup-username'),
-  setupEmailPreview: document.getElementById('setup-email-preview'),
-  setupPassword: document.getElementById('setup-password'),
-  setupPasswordConfirm: document.getElementById('setup-password-confirm'),
-  btnToggleSetupPassword: document.getElementById('btn-toggle-setup-password'),
-  loginUsername: document.getElementById('login-username'),
-  loginPassword: document.getElementById('login-password'),
-  btnToggleLoginPassword: document.getElementById('btn-toggle-login-password'),
-  btnLogout: document.getElementById('btn-logout'),
-  currentUsernameDisplay: document.getElementById('current-username-display'),
-  userAvatarInitials: document.getElementById('user-avatar-initials'),
+  authModal: 'auth-modal',
+  authTitle: 'auth-title',
+  authSubtitle: 'auth-subtitle',
+  setupForm: 'setup-form',
+  loginForm: 'login-form',
+  setupUsername: 'setup-username',
+  setupEmailPreview: 'setup-email-preview',
+  setupPassword: 'setup-password',
+  setupPasswordConfirm: 'setup-password-confirm',
+  btnToggleSetupPassword: 'btn-toggle-setup-password',
+  loginUsername: 'login-username',
+  loginPassword: 'login-password',
+  btnToggleLoginPassword: 'btn-toggle-login-password',
+  btnLogout: 'btn-logout',
+  currentUsernameDisplay: 'current-username-display',
+  userAvatarInitials: 'user-avatar-initials',
 
   // Mobile Navigation
-  btnMobileSidebarToggle: document.getElementById('btn-mobile-sidebar-toggle'),
-  btnSidebarClose: document.getElementById('btn-sidebar-close'),
-  sidebarBackdrop: document.getElementById('sidebar-backdrop'),
-  appSidebar: document.getElementById('app-sidebar'),
-  btnDetailBack: document.getElementById('btn-detail-back'),
+  btnMobileSidebarToggle: 'btn-mobile-sidebar-toggle',
+  btnSidebarClose: 'btn-sidebar-close',
+  sidebarBackdrop: 'sidebar-backdrop',
+  appSidebar: 'app-sidebar',
+  btnDetailBack: 'btn-detail-back',
 
   // Navigation & Badges
-  navInbox: document.getElementById('nav-tab-inbox'),
-  navSent: document.getElementById('nav-tab-sent'),
-  navPurge: document.getElementById('nav-tab-purge'),
-  navSettings: document.getElementById('nav-tab-settings'),
-  badgeInbox: document.getElementById('badge-inbox-count'),
-  badgeSent: document.getElementById('badge-sent-count'),
-  connectionPill: document.getElementById('connection-pill'),
-  connectionStatusText: document.getElementById('connection-status-text'),
-  storageSentStat: document.getElementById('storage-sent-stat'),
-  storageInboxStat: document.getElementById('storage-inbox-stat'),
-  storagePercentage: document.getElementById('storage-percentage'),
-  storageProgressFill: document.getElementById('storage-progress-fill'),
+  navInbox: 'nav-tab-inbox',
+  navSent: 'nav-tab-sent',
+  navPurge: 'nav-tab-purge',
+  navSettings: 'nav-tab-settings',
+  badgeInbox: 'badge-inbox-count',
+  badgeSent: 'badge-sent-count',
+  connectionPill: 'connection-pill',
+  connectionStatusText: 'connection-status-text',
+  storageSentStat: 'storage-sent-stat',
+  storageInboxStat: 'storage-inbox-stat',
+  storagePercentage: 'storage-percentage',
+  storageProgressFill: 'storage-progress-fill',
 
   // Views
-  viewMail: document.getElementById('view-mail'),
-  viewSettings: document.getElementById('view-settings'),
-  viewPurge: document.getElementById('view-purge'),
-  currentFolderTitle: document.getElementById('current-folder-title'),
-  folderMetaSub: document.getElementById('folder-meta-sub'),
+  viewMail: 'view-mail',
+  viewSettings: 'view-settings',
+  viewPurge: 'view-purge',
+  currentFolderTitle: 'current-folder-title',
+  folderMetaSub: 'folder-meta-sub',
 
   // List & Detail
-  emailItemsContainer: document.getElementById('email-items-container'),
-  emailDetailColumn: document.getElementById('email-detail-column'),
-  detailEmptyPlaceholder: document.getElementById('detail-empty-placeholder'),
-  detailContent: document.getElementById('detail-content'),
-  detailSubject: document.getElementById('detail-subject'),
-  detailSender: document.getElementById('detail-sender'),
-  detailSenderEmail: document.getElementById('detail-sender-email'),
-  detailRecipient: document.getElementById('detail-recipient'),
-  detailDate: document.getElementById('detail-date'),
-  detailAvatar: document.getElementById('detail-avatar'),
-  detailBodyIframe: document.getElementById('detail-body-iframe'),
-  detailBodyPlain: document.getElementById('detail-body-plain'),
-  detailBodyHtmlWrapper: document.getElementById('detail-body-html-wrapper'),
-  btnViewRendered: document.getElementById('btn-view-rendered'),
-  btnViewPlain: document.getElementById('btn-view-plain'),
-  btnCloseDetail: document.getElementById('btn-close-detail'),
-  btnReply: document.getElementById('btn-reply'),
+  emailItemsContainer: 'email-items-container',
+  emailDetailColumn: 'email-detail-column',
+  detailEmptyPlaceholder: 'detail-empty-placeholder',
+  detailContent: 'detail-content',
+  detailSubject: 'detail-subject',
+  detailSender: 'detail-sender',
+  detailSenderEmail: 'detail-sender-email',
+  detailRecipient: 'detail-recipient',
+  detailDate: 'detail-date',
+  detailAvatar: 'detail-avatar',
+  detailBodyIframe: 'detail-body-iframe',
+  detailBodyPlain: 'detail-body-plain',
+  detailBodyHtmlWrapper: 'detail-body-html-wrapper',
+  btnViewRendered: 'btn-view-rendered',
+  btnViewPlain: 'btn-view-plain',
+  btnCloseDetail: 'btn-close-detail',
+  btnReply: 'btn-reply',
 
   // Actions & Search
-  btnSyncInbox: document.getElementById('btn-sync-inbox'),
-  syncIcon: document.getElementById('sync-icon'),
-  globalSearchInput: document.getElementById('global-search-input'),
-  btnSearchClear: document.getElementById('btn-search-clear'),
-  btnThemeToggle: document.getElementById('btn-theme-toggle'),
+  btnSyncInbox: 'btn-sync-inbox',
+  syncIcon: 'sync-icon',
+  globalSearchInput: 'global-search-input',
+  btnSearchClear: 'btn-search-clear',
+  btnThemeToggle: 'btn-theme-toggle',
 
   // Compose Modal
-  composeModal: document.getElementById('compose-modal'),
-  btnComposeOpen: document.getElementById('btn-compose-open'),
-  btnComposeClose: document.getElementById('btn-compose-close'),
-  btnComposeDiscard: document.getElementById('btn-compose-discard'),
-  composeForm: document.getElementById('compose-form'),
-  composeTo: document.getElementById('compose-to'),
-  composeSubject: document.getElementById('compose-subject'),
-  composeMessage: document.getElementById('compose-message'),
+  composeModal: 'compose-modal',
+  btnComposeOpen: 'btn-compose-open',
+  btnComposeClose: 'btn-compose-close',
+  btnComposeDiscard: 'btn-compose-discard',
+  composeForm: 'compose-form',
+  composeTo: 'compose-to',
+  composeSubject: 'compose-subject',
+  composeMessage: 'compose-message',
 
   // Settings
-  settingsForm: document.getElementById('settings-form'),
-  cfgEmail: document.getElementById('cfg-email'),
-  cfgPassword: document.getElementById('cfg-password'),
-  cfgSenderName: document.getElementById('cfg-sender-name'),
-  cfgImapHost: document.getElementById('cfg-imap-host'),
-  cfgImapPort: document.getElementById('cfg-imap-port'),
-  cfgSmtpHost: document.getElementById('cfg-smtp-host'),
-  cfgSmtpPort: document.getElementById('cfg-smtp-port'),
-  btnTestConnection: document.getElementById('btn-test-connection'),
-  testResultBox: document.getElementById('test-connection-result'),
-  btnTogglePasswordView: document.getElementById('btn-toggle-password-view'),
-  passwordStatusHint: document.getElementById('password-status-hint'),
+  settingsForm: 'settings-form',
+  cfgEmail: 'cfg-email',
+  cfgPassword: 'cfg-password',
+  cfgSenderName: 'cfg-sender-name',
+  cfgImapHost: 'cfg-imap-host',
+  cfgImapPort: 'cfg-imap-port',
+  cfgSmtpHost: 'cfg-smtp-host',
+  cfgSmtpPort: 'cfg-smtp-port',
+  btnTestConnection: 'btn-test-connection',
+  testResultBox: 'test-connection-result',
+  btnTogglePasswordView: 'btn-toggle-password-view',
+  passwordStatusHint: 'password-status-hint',
 
   // Purge
-  purgeCountInbox: document.getElementById('purge-count-inbox'),
-  purgeCountSent: document.getElementById('purge-count-sent'),
-  btnPurgeSent: document.getElementById('btn-purge-sent'),
-  btnPurgeReceived: document.getElementById('btn-purge-received'),
-  btnPurgeAll: document.getElementById('btn-purge-all'),
+  purgeCountInbox: 'purge-count-inbox',
+  purgeCountSent: 'purge-count-sent',
+  btnPurgeSent: 'btn-purge-sent',
+  btnPurgeReceived: 'btn-purge-received',
+  btnPurgeAll: 'btn-purge-all',
 
   // Confirm Modal
-  confirmModal: document.getElementById('confirm-modal'),
-  confirmModalTitle: document.getElementById('confirm-modal-title'),
-  confirmModalMessage: document.getElementById('confirm-modal-message'),
-  btnConfirmCancel: document.getElementById('btn-confirm-cancel'),
-  btnConfirmProceed: document.getElementById('btn-confirm-proceed'),
+  confirmModal: 'confirm-modal',
+  confirmModalTitle: 'confirm-modal-title',
+  confirmModalMessage: 'confirm-modal-message',
+  btnConfirmCancel: 'btn-confirm-cancel',
+  btnConfirmProceed: 'btn-confirm-proceed',
 
   // Toast
-  toastContainer: document.getElementById('toast-container')
+  toastContainer: 'toast-container'
 };
+
+function initElements() {
+  for (const [key, id] of Object.entries(ELEMENT_ID_MAP)) {
+    elements[key] = document.getElementById(id);
+  }
+}
+initElements();
+
+function on(el, event, handler) {
+  if (el && typeof el.addEventListener === 'function') {
+    el.addEventListener(event, handler);
+  }
+}
 
 // --- INTERNATIONALIZATION (i18n) HELPERS ---
 function t(key, params = {}) {
@@ -1040,14 +1055,16 @@ function initEventListeners() {
   // Restore saved theme
   const savedTheme = localStorage.getItem('lazymail_theme') || 'dark';
   document.documentElement.setAttribute('data-theme', savedTheme);
-  if (savedTheme === 'light') {
-    elements.btnThemeToggle.querySelector('.icon-moon').classList.add('hidden');
-    elements.btnThemeToggle.querySelector('.icon-sun').classList.remove('hidden');
+  if (savedTheme === 'light' && elements.btnThemeToggle) {
+    const moon = elements.btnThemeToggle.querySelector('.icon-moon');
+    const sun = elements.btnThemeToggle.querySelector('.icon-sun');
+    if (moon) moon.classList.add('hidden');
+    if (sun) sun.classList.remove('hidden');
   }
 
   // Language Switcher Buttons (Handles both navbar and auth modal switchers)
   document.querySelectorAll('.lang-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
+    on(btn, 'click', (e) => {
       const targetLang = e.currentTarget.getAttribute('data-lang');
       if (targetLang && targetLang !== state.currentLang) {
         applyLanguage(targetLang);
@@ -1057,7 +1074,7 @@ function initEventListeners() {
 
   // Live Gmail Address Preview
   if (elements.setupUsername && elements.setupEmailPreview) {
-    elements.setupUsername.addEventListener('input', (e) => {
+    on(elements.setupUsername, 'input', (e) => {
       const val = e.target.value.trim().toLowerCase();
       if (!val) {
         elements.setupEmailPreview.innerText = 'yourname@gmail.com';
@@ -1071,25 +1088,25 @@ function initEventListeners() {
 
   // Password Toggles in Auth Modals
   if (elements.btnToggleSetupPassword) {
-    elements.btnToggleSetupPassword.addEventListener('click', () => {
+    on(elements.btnToggleSetupPassword, 'click', () => {
       const isPass = elements.setupPassword.type === 'password';
       elements.setupPassword.type = isPass ? 'text' : 'password';
     });
   }
 
   if (elements.btnToggleLoginPassword) {
-    elements.btnToggleLoginPassword.addEventListener('click', () => {
+    on(elements.btnToggleLoginPassword, 'click', () => {
       const isPass = elements.loginPassword.type === 'password';
       elements.loginPassword.type = isPass ? 'text' : 'password';
     });
   }
 
   // Auth Forms
-  elements.setupForm.addEventListener('submit', async (e) => {
+  on(elements.setupForm, 'submit', async (e) => {
     e.preventDefault();
-    const username = elements.setupUsername.value.trim();
-    const p1 = elements.setupPassword.value.trim();
-    const p2 = elements.setupPasswordConfirm.value.trim();
+    const username = elements.setupUsername ? elements.setupUsername.value.trim() : '';
+    const p1 = elements.setupPassword ? elements.setupPassword.value.trim() : '';
+    const p2 = elements.setupPasswordConfirm ? elements.setupPasswordConfirm.value.trim() : '';
 
     if (p1 !== p2) {
       showToast(t('passcodes_dont_match'), 'error');
@@ -1110,10 +1127,10 @@ function initEventListeners() {
     }
   });
 
-  elements.loginForm.addEventListener('submit', async (e) => {
+  on(elements.loginForm, 'submit', async (e) => {
     e.preventDefault();
-    const username = elements.loginUsername.value.trim();
-    const password = elements.loginPassword.value;
+    const username = elements.loginUsername ? elements.loginUsername.value.trim() : '';
+    const password = elements.loginPassword ? elements.loginPassword.value : '';
 
     try {
       await apiRequest('/api/auth/login', {
@@ -1129,7 +1146,7 @@ function initEventListeners() {
     }
   });
 
-  elements.btnLogout.addEventListener('click', async () => {
+  on(elements.btnLogout, 'click', async () => {
     try {
       await apiRequest('/api/auth/logout', { method: 'POST' });
       state.user = null;
@@ -1141,52 +1158,44 @@ function initEventListeners() {
   });
 
   // Navigation
-  elements.navInbox.addEventListener('click', () => switchView('inbox'));
-  elements.navSent.addEventListener('click', () => switchView('sent'));
-  elements.navPurge.addEventListener('click', () => switchView('purge'));
-  elements.navSettings.addEventListener('click', () => switchView('settings'));
+  on(elements.navInbox, 'click', () => switchView('inbox'));
+  on(elements.navSent, 'click', () => switchView('sent'));
+  on(elements.navPurge, 'click', () => switchView('purge'));
+  on(elements.navSettings, 'click', () => switchView('settings'));
 
   // Sync Button
-  elements.btnSyncInbox.addEventListener('click', handleSyncInbox);
+  on(elements.btnSyncInbox, 'click', handleSyncInbox);
 
   // Compose
-  elements.btnComposeOpen.addEventListener('click', () => openCompose());
-  elements.btnComposeClose.addEventListener('click', closeCompose);
-  elements.btnComposeDiscard.addEventListener('click', closeCompose);
-  elements.composeForm.addEventListener('submit', handleSendEmail);
+  on(elements.btnComposeOpen, 'click', () => openCompose());
+  on(elements.btnComposeClose, 'click', closeCompose);
+  on(elements.btnComposeDiscard, 'click', closeCompose);
+  on(elements.composeForm, 'submit', handleSendEmail);
 
   // Detail View Controls
-  elements.btnViewRendered.addEventListener('click', () => {
-    elements.btnViewRendered.classList.add('active');
-    elements.btnViewPlain.classList.remove('active');
-    elements.detailBodyHtmlWrapper.classList.remove('hidden');
-    elements.detailBodyPlain.classList.add('hidden');
+  on(elements.btnViewRendered, 'click', () => {
+    if (elements.btnViewRendered) elements.btnViewRendered.classList.add('active');
+    if (elements.btnViewPlain) elements.btnViewPlain.classList.remove('active');
+    if (elements.detailBodyHtmlWrapper) elements.detailBodyHtmlWrapper.classList.remove('hidden');
+    if (elements.detailBodyPlain) elements.detailBodyPlain.classList.add('hidden');
   });
 
-  elements.btnViewPlain.addEventListener('click', () => {
-    elements.btnViewPlain.classList.add('active');
-    elements.btnViewRendered.classList.remove('active');
-    elements.detailBodyPlain.classList.remove('hidden');
-    elements.detailBodyHtmlWrapper.classList.add('hidden');
+  on(elements.btnViewPlain, 'click', () => {
+    if (elements.btnViewPlain) elements.btnViewPlain.classList.add('active');
+    if (elements.btnViewRendered) elements.btnViewRendered.classList.remove('active');
+    if (elements.detailBodyPlain) elements.detailBodyPlain.classList.remove('hidden');
+    if (elements.detailBodyHtmlWrapper) elements.detailBodyHtmlWrapper.classList.add('hidden');
   });
 
-  elements.btnCloseDetail.addEventListener('click', clearDetailView);
-  if (elements.btnDetailBack) {
-    elements.btnDetailBack.addEventListener('click', clearDetailView);
-  }
+  on(elements.btnCloseDetail, 'click', clearDetailView);
+  on(elements.btnDetailBack, 'click', clearDetailView);
 
   // Mobile Drawer Toggle
-  if (elements.btnMobileSidebarToggle) {
-    elements.btnMobileSidebarToggle.addEventListener('click', openMobileSidebar);
-  }
-  if (elements.btnSidebarClose) {
-    elements.btnSidebarClose.addEventListener('click', closeMobileSidebar);
-  }
-  if (elements.sidebarBackdrop) {
-    elements.sidebarBackdrop.addEventListener('click', closeMobileSidebar);
-  }
+  on(elements.btnMobileSidebarToggle, 'click', openMobileSidebar);
+  on(elements.btnSidebarClose, 'click', closeMobileSidebar);
+  on(elements.sidebarBackdrop, 'click', closeMobileSidebar);
 
-  elements.btnReply.addEventListener('click', () => {
+  on(elements.btnReply, 'click', () => {
     if (!state.selectedEmailData) return;
     const { sender_email, subject, body_plain } = state.selectedEmailData;
     const replySubject = subject.startsWith('Re:') ? subject : `Re: ${subject}`;
@@ -1196,61 +1205,69 @@ function initEventListeners() {
 
   // Search
   let searchDebounce = null;
-  elements.globalSearchInput.addEventListener('input', (e) => {
-    const val = e.target.value;
-    if (val) {
-      elements.btnSearchClear.classList.remove('hidden');
-    } else {
-      elements.btnSearchClear.classList.add('hidden');
-    }
+  if (elements.globalSearchInput) {
+    on(elements.globalSearchInput, 'input', (e) => {
+      const val = e.target.value;
+      if (elements.btnSearchClear) {
+        if (val) {
+          elements.btnSearchClear.classList.remove('hidden');
+        } else {
+          elements.btnSearchClear.classList.add('hidden');
+        }
+      }
 
-    clearTimeout(searchDebounce);
-    searchDebounce = setTimeout(() => {
-      loadEmails(state.currentFolder, val);
-    }, 300);
-  });
+      clearTimeout(searchDebounce);
+      searchDebounce = setTimeout(() => {
+        loadEmails(state.currentFolder, val);
+      }, 300);
+    });
+  }
 
-  elements.btnSearchClear.addEventListener('click', () => {
-    elements.globalSearchInput.value = '';
-    elements.btnSearchClear.classList.add('hidden');
+  on(elements.btnSearchClear, 'click', () => {
+    if (elements.globalSearchInput) elements.globalSearchInput.value = '';
+    if (elements.btnSearchClear) elements.btnSearchClear.classList.add('hidden');
     loadEmails(state.currentFolder, '');
   });
 
   // Settings
-  elements.settingsForm.addEventListener('submit', handleSaveSettings);
-  elements.btnTestConnection.addEventListener('click', handleTestConnection);
-  elements.btnTogglePasswordView.addEventListener('click', () => {
-    const isPassword = elements.cfgPassword.type === 'password';
-    elements.cfgPassword.type = isPassword ? 'text' : 'password';
+  on(elements.settingsForm, 'submit', handleSaveSettings);
+  on(elements.btnTestConnection, 'click', handleTestConnection);
+  on(elements.btnTogglePasswordView, 'click', () => {
+    if (elements.cfgPassword) {
+      const isPassword = elements.cfgPassword.type === 'password';
+      elements.cfgPassword.type = isPassword ? 'text' : 'password';
+    }
   });
 
   // Purge buttons
-  elements.btnPurgeSent.addEventListener('click', () => promptPurge('sent'));
-  elements.btnPurgeReceived.addEventListener('click', () => promptPurge('received'));
-  elements.btnPurgeAll.addEventListener('click', () => promptPurge('all'));
+  on(elements.btnPurgeSent, 'click', () => promptPurge('sent'));
+  on(elements.btnPurgeReceived, 'click', () => promptPurge('received'));
+  on(elements.btnPurgeAll, 'click', () => promptPurge('all'));
 
-  elements.btnConfirmCancel.addEventListener('click', () => {
-    elements.confirmModal.classList.remove('active');
+  on(elements.btnConfirmCancel, 'click', () => {
+    if (elements.confirmModal) elements.confirmModal.classList.remove('active');
     state.pendingPurgeTarget = null;
   });
-  elements.btnConfirmProceed.addEventListener('click', executePurge);
+  on(elements.btnConfirmProceed, 'click', executePurge);
 
   // Google OAuth UI & Modal Events
   const btnOpenOAuth = document.getElementById('btn-open-oauth-modal');
-  if (btnOpenOAuth) btnOpenOAuth.addEventListener('click', openOAuthModal);
+  on(btnOpenOAuth, 'click', openOAuthModal);
 
   const btnCloseOAuth = document.getElementById('btn-close-oauth-modal');
-  if (btnCloseOAuth) btnCloseOAuth.addEventListener('click', closeOAuthModal);
+  on(btnCloseOAuth, 'click', closeOAuthModal);
 
   const btnCancelOAuth = document.getElementById('btn-cancel-oauth-modal');
-  if (btnCancelOAuth) btnCancelOAuth.addEventListener('click', closeOAuthModal);
+  on(btnCancelOAuth, 'click', closeOAuthModal);
 
   const formOAuth = document.getElementById('form-oauth-config');
   if (formOAuth) {
-    formOAuth.addEventListener('submit', async (e) => {
+    on(formOAuth, 'submit', async (e) => {
       e.preventDefault();
-      const clientId = document.getElementById('oauth-client-id').value.trim();
-      const clientSecret = document.getElementById('oauth-client-secret').value.trim();
+      const clientIdEl = document.getElementById('oauth-client-id');
+      const clientSecretEl = document.getElementById('oauth-client-secret');
+      const clientId = clientIdEl ? clientIdEl.value.trim() : '';
+      const clientSecret = clientSecretEl ? clientSecretEl.value.trim() : '';
       try {
         await apiRequest('/api/auth/google/config', {
           method: 'POST',
@@ -1267,7 +1284,7 @@ function initEventListeners() {
 
   const btnDisconnectGoogle = document.getElementById('btn-disconnect-google');
   if (btnDisconnectGoogle) {
-    btnDisconnectGoogle.addEventListener('click', async () => {
+    on(btnDisconnectGoogle, 'click', async () => {
       if (!confirm(t('confirm_disconnect_google') || 'Google hesabının bağlantısını kesmek istediğinize emin misiniz?')) return;
       try {
         await apiRequest('/api/auth/google/disconnect', { method: 'POST' });
@@ -1282,7 +1299,12 @@ function initEventListeners() {
 
 // --- BOOTSTRAP ---
 document.addEventListener('DOMContentLoaded', () => {
-  initEventListeners();
+  initElements();
+  try {
+    initEventListeners();
+  } catch (err) {
+    console.error('Error during initEventListeners:', err);
+  }
   applyLanguage(state.currentLang); // Default: Turkish ('tr') or saved user preference
   checkAuthStatus();
 });

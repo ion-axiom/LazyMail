@@ -37,6 +37,9 @@ from app.email_service import (
 def setup_test_db(tmp_path, monkeypatch):
     test_db = tmp_path / "test_oauth.db"
     monkeypatch.setattr(config, "DB_PATH", test_db)
+    monkeypatch.setattr(config, "GOOGLE_CLIENT_ID", "")
+    monkeypatch.setattr(config, "GOOGLE_CLIENT_SECRET", "")
+    monkeypatch.setattr(config, "GOOGLE_REDIRECT_URI", "")
     init_db()
     client.cookies.clear()
     return str(test_db)
