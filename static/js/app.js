@@ -342,9 +342,17 @@ function updateOAuthSettingsUI(status) {
         oauthAvatar.style.display = 'none';
       }
     }
+    if (elements.cfgPassword) {
+      elements.cfgPassword.placeholder = '(Google OAuth 2.0 Aktif / Şifre Gerekmez)';
+      elements.cfgPassword.disabled = true;
+    }
   } else {
     if (googleCard) googleCard.classList.add('hidden');
     if (appPwBanner) appPwBanner.classList.remove('hidden');
+    if (elements.cfgPassword) {
+      elements.cfgPassword.placeholder = '•••• •••• •••• ••••';
+      elements.cfgPassword.disabled = false;
+    }
   }
 }
 
@@ -796,9 +804,19 @@ function closeCompose() {
 
 async function handleSendEmail(e) {
   e.preventDefault();
-  const recipient = elements.composeTo.value.trim();
-  const subject = elements.composeSubject.value.trim();
-  const message = elements.composeMessage.value.trim();
+  const toEl = elements.composeTo || document.getElementById('compose-to');
+  const subjEl = elements.composeSubject || document.getElementById('compose-subject');
+  const msgEl = elements.composeMessage || document.getElementById('compose-message');
+
+  const recipient = toEl ? toEl.value.trim() : '';
+  const subject = subjEl ? subjEl.value.trim() : '';
+  const message = msgEl ? msgEl.value.trim() : '';
+
+  if (!recipient) {
+    showToast(t('recipient_required') || 'Alıcı adresi gereklidir.', 'error');
+    if (toEl) toEl.focus();
+    return;
+  }
 
   // Anti-bulk protection: Enforce single recipient on client side
   if (recipient.includes(',') || recipient.includes(';') || recipient.includes(' ') || recipient.includes('\n')) {

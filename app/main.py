@@ -460,6 +460,52 @@ async def update_config(req: EmailConfigRequest, user: dict = Depends(get_curren
 
 @app.post("/api/config/test")
 async def test_email_config(req: TestConfigRequest, user: dict = Depends(get_current_user)):
+    google_tokens = get_google_tokens()
+    if google_tokens and google_tokens.get("encrypted_refresh_token"):
+        # Test connection via Google REST API
+        try:
+            from app.email_service import get_valid_google_access_token
+            access_token = get_valid_google_access_token()
+            if not access_token:
+                return {
+                    "success": False,
+                    "imap_ok": False,
+                    "smtp_ok": False,
+                    "imap_message": "Google OAuth token not available",
+                    "smtp_message": "Please reconnect your Google account"
+                }
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                r = await client.get(
+                    "https://gmail.googleapis.com/gmail/v1/users/me/profile",
+                    headers={"Authorization": f"Bearer {access_token}"}
+                )
+                if r.status_code == 200:
+                    profile = r.json()
+                    email_addr = profile.get("emailAddress", "Google Account")
+                    return {
+                        "success": True,
+                        "imap_ok": True,
+                        "smtp_ok": True,
+                        "imap_message": f"Gmail REST API Bağlantısı Başarılı ({email_addr})",
+                        "smtp_message": "Gmail REST API Gönderim Hazır (Kota Aktif)"
+                    }
+                else:
+                    return {
+                        "success": False,
+                        "imap_ok": False,
+                        "smtp_ok": False,
+                        "imap_message": f"Google API Hatası: {r.status_code}",
+                        "smtp_message": r.text
+                    }
+        except Exception as e:
+            return {
+                "success": False,
+                "imap_ok": False,
+                "smtp_ok": False,
+                "imap_message": f"Google API Test Hatası: {e}",
+                "smtp_message": str(e)
+            }
+
     existing = get_email_config()
     target_email = (req.email_address or "").strip()
     target_pass = (req.password or "").strip()
