@@ -351,14 +351,16 @@ function updateOAuthSettingsUI(status) {
 function openOAuthModal() {
   const modal = document.getElementById('modal-oauth-config');
   if (modal) {
-    modal.classList.remove('hidden');
+    modal.classList.add('active');
     loadOAuthClientConfig();
   }
 }
 
 function closeOAuthModal() {
   const modal = document.getElementById('modal-oauth-config');
-  if (modal) modal.classList.add('hidden');
+  if (modal) {
+    modal.classList.remove('active');
+  }
 }
 
 async function loadOAuthClientConfig() {
